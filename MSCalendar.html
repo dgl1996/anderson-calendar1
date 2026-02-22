@@ -1,0 +1,3494 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>工作日历</title>
+  <link rel="manifest" href="manifest.json">
+  <style>
+    :root {
+      --bg-primary: #202020;
+      --bg-secondary: #2a2a2a;
+      --bg-tertiary: #333333;
+      --text-primary: #e0e0e0;
+      --text-secondary: #a8a8a8;
+      --accent: #5ba3dc;
+      --accent-hover: #4ec9b0;
+      --border: #404040;
+      --event-font-size: 13px;
+    }
+
+    [data-theme="light"] {
+      --bg-primary: #ffffff;
+      --bg-secondary: #f5f5f5;
+      --bg-tertiary: #e8e8e8;
+      --text-primary: #333333;
+      --text-secondary: #666666;
+      --accent: #2c7bb6;
+      --accent-hover: #1a5c8e;
+      --border: #dddddd;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: "Consolas", "PingFang SC", "Microsoft YaHei", monospace, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+      overflow: hidden;
+    }
+
+    .layout {
+      display: flex;
+      height: 100vh;
+    }
+
+    /* 侧边栏通用样式 */
+    .sidebar {
+      background: var(--bg-secondary);
+      border: none !important;
+      display: flex;
+      flex-direction: column;
+      transition: width 0.25s ease, min-width 0.25s ease;
+      overflow: hidden;
+    }
+
+    .sidebar.right {
+      border: none !important;
+    }
+
+    .sidebar.collapsed {
+      width: 12px !important;
+      min-width: 12px !important;
+      overflow: hidden !important;
+    }
+
+    .sidebar.collapsed .sidebar-header {
+      padding: 0;
+      justify-content: center;
+      opacity: 0; /* Hide header content completely */
+      pointer-events: none;
+    }
+
+    .sidebar.collapsed .sidebar-toggle {
+      padding: 0;
+      font-size: 10px;
+      height: 100%; /* Fill height to be clickable */
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: auto; /* Re-enable clicks */
+      opacity: 1;
+    }
+
+    .sidebar-left {
+      width: 240px;
+      min-width: 240px;
+    }
+
+    .sidebar-right {
+      width: 280px;
+      min-width: 280px;
+    }
+
+    .sidebar-toggle {
+      background: none;
+      border: none;
+      color: var(--text-secondary);
+      cursor: pointer;
+      padding: 6px;
+      font-size: 14px;
+      transition: color 0.2s;
+      width: 100%;
+      overflow: hidden;
+      white-space: nowrap;
+    }
+
+    .sidebar-toggle:hover {
+      color: var(--accent);
+    }
+
+    .sidebar-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 8px;
+      /* border-bottom: 1px solid var(--border); */
+      min-height: 40px;
+    }
+
+    .sidebar-content {
+      flex: 1;
+      padding: 16px;
+      overflow-y: auto;
+    }
+
+    .sidebar.collapsed .sidebar-header span,
+    .sidebar.collapsed .sidebar-header .sidebar-title-text,
+    .sidebar.collapsed .sidebar-content {
+      display: none !important;
+    }
+
+    .sidebar-title-text {
+      display: flex;
+      flex-direction: column;
+      line-height: 1.2;
+      font-weight: bold;
+    }
+
+    /* 主内容区 */
+    .main-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      position: relative;
+    }
+
+    .calendar-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 24px;
+      position: relative;
+    }
+
+    .calendar-title {
+      font-size: 1.5rem;
+      font-weight: 500;
+      color: var(--text-primary);
+    }
+
+    .calendar-nav {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .calendar-nav button {
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border);
+      color: var(--text-primary);
+      padding: 8px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.2s;
+    }
+
+    .calendar-nav button:hover {
+      background: var(--border);
+      color: var(--accent);
+    }
+
+    /* 月历网格，行数由JS动态设置 */
+    .calendar-grid {
+      flex: 1;
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      grid-template-rows: 40px repeat(5, minmax(80px, auto));
+      gap: 1px;
+      padding: 0;
+      background: var(--border); /* Grid lines */
+      overflow-y: auto;
+      border: none !important; /* Ensure no border */
+    }
+
+    .weekday-header {
+      background: var(--bg-secondary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-secondary);
+    }
+
+    .calendar-cell {
+      background: var(--bg-primary);
+      min-height: 80px;
+      padding: 8px;
+      cursor: pointer;
+      transition: background 0.2s;
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      overflow: hidden;
+    }
+
+    .calendar-cell:hover {
+      background: var(--bg-tertiary);
+    }
+
+    .calendar-cell.today {
+      background: rgba(91, 163, 220, 0.15);
+      border: 1px solid var(--accent);
+    }
+
+    .calendar-cell.today .cell-date {
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    .calendar-cell.other-month .cell-date {
+      color: var(--text-secondary);
+      opacity: 0.5;
+    }
+
+    .cell-date {
+      font-size: 13px;
+      font-weight: 500;
+      margin-bottom: 6px;
+      color: var(--text-primary);
+      flex-shrink: 0;
+      display: flex;
+      align-items: baseline;
+      gap: 4px;
+      flex-wrap: wrap;
+      position: relative;
+    }
+
+    .cell-dots {
+      display: flex;
+      gap: 3px;
+      margin-left: auto;
+    }
+
+    .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+    }
+
+    .dot.note {
+      background-color: #5ba3dc; /* Blue */
+    }
+
+    .dot.task {
+      background-color: #e57373; /* Red */
+    }
+
+    .lunar-text {
+        font-size: 11px;
+        color: var(--text-secondary);
+        font-weight: normal;
+    }
+
+    .lunar-holiday {
+        font-weight: bold;
+        color: var(--accent);
+    }
+
+    .cell-date .week-number {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--accent);
+      opacity: 0.8;
+    }
+
+    .cell-events-list {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .cell-event-item {
+      font-size: var(--event-font-size, 11px);
+      color: var(--accent);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      padding: 2px 0;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      cursor: default;
+      position: relative;
+    }
+
+    .cell-event-item:hover {
+      color: var(--accent-hover);
+    }
+
+    .cell-event-item.task {
+      padding-left: 0;
+    }
+
+    .cell-event-item .task-checkbox {
+      width: 12px;
+      height: 12px;
+      min-width: 12px;
+      border: 1.5px solid var(--accent);
+      border-radius: 2px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 9px;
+      color: var(--accent);
+      flex-shrink: 0;
+    }
+
+    .cell-event-item .task-checkbox:hover {
+      background: rgba(91, 163, 220, 0.2);
+    }
+
+    .cell-event-item .task-checkbox.checked {
+      background: var(--accent);
+      color: var(--bg-primary);
+    }
+
+    .cell-event-item .task-checkbox.checked::after {
+      content: '✓';
+    }
+
+    .cell-event-item .event-text {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      flex: 1;
+    }
+
+    .cell-event-item .event-text.bold {
+      font-weight: 700;
+    }
+
+    .cell-event-item.completed .event-text {
+      color: var(--text-secondary);
+      opacity: 0.7;
+      text-decoration: line-through;
+    }
+
+    /* 悬停浮窗 */
+    .event-tooltip {
+      position: fixed;
+      left: 0;
+      top: 0;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 12px 16px;
+      max-width: 300px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+      z-index: 999;
+      pointer-events: none;
+      display: none;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .event-tooltip.show {
+      display: block;
+    }
+
+    .event-tooltip .tooltip-title {
+      font-weight: 500;
+      color: var(--text-primary);
+      margin-bottom: 4px;
+      word-break: break-word;
+    }
+
+    .event-tooltip .tooltip-desc {
+      color: var(--text-secondary);
+      font-size: 12px;
+      word-break: break-word;
+    }
+
+    .event-tooltip .tooltip-badge {
+      font-size: 10px;
+      color: var(--accent);
+      margin-bottom: 4px;
+    }
+
+    .event-tooltip .tooltip-attrs {
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid var(--border);
+      font-size: 11px;
+    }
+
+    .event-tooltip .tooltip-attr {
+      color: var(--text-secondary);
+      margin-bottom: 2px;
+    }
+
+    .event-tooltip .tooltip-attr .attr-name {
+      color: var(--accent);
+    }
+
+    /* 模态框 */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.6);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+
+    .modal-overlay.show {
+      display: flex;
+    }
+
+    .modal {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 24px;
+      width: 90%;
+      max-width: 600px;
+      max-height: 90vh;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .modal.fullscreen {
+      width: 100vw !important;
+      height: 100vh !important;
+      max-width: none !important;
+      max-height: none !important;
+      border-radius: 0 !important;
+      border: none !important;
+      position: fixed !important;
+      top: 0 !important;
+      left: 0 !important;
+      margin: 0 !important;
+      z-index: 2000;
+    }
+
+    .modal.fullscreen .modal-title-bar {
+      margin-bottom: 20px;
+    }
+
+    .modal.fullscreen textarea {
+        flex: 1;
+    }
+    
+    .modal-title-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 16px;
+        flex-shrink: 0;
+    }
+    
+    .modal-title-bar .modal-title {
+        margin-bottom: 0;
+    }
+
+    /* .modal-title removed from previous block, we use modal-title-bar now */
+
+    .modal-expand-btn {
+        background: none;
+        border: 1px solid var(--border);
+        color: var(--text-secondary);
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        cursor: pointer;
+    }
+    .modal-expand-btn:hover {
+        color: var(--accent);
+        border-color: var(--accent);
+    }
+
+    .modal input,
+    .modal textarea {
+      width: 100%;
+      padding: 10px 12px;
+      margin-bottom: 12px;
+      background: var(--bg-primary);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text-primary);
+      font-size: 14px;
+      font-family: inherit;
+    }
+
+    .modal textarea {
+      resize: vertical;
+      min-height: 80px;
+    }
+
+    .modal input:focus,
+    .modal textarea:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    .modal-checkbox {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 16px;
+      font-size: 14px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .modal-checkbox input {
+      width: auto;
+      margin: 0;
+    }
+
+    .modal-buttons {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .modal-buttons button {
+      padding: 8px 16px;
+      border-radius: 4px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .modal-save {
+      background: var(--accent);
+      border: none;
+      color: var(--bg-primary);
+    }
+
+    .modal-save:hover {
+      background: var(--accent-hover);
+    }
+
+    .modal-delete {
+      background: transparent;
+      border: 1px solid #c55;
+      color: #e88;
+      margin-right: auto;
+    }
+
+    .modal-delete:hover {
+      background: rgba(204, 85, 85, 0.2);
+    }
+
+    .modal-cancel {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+    }
+
+    .modal-cancel:hover {
+      color: var(--text-primary);
+    }
+
+    .custom-attr-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 8px;
+      align-items: center;
+    }
+
+    .custom-attr-row input {
+      flex: 1;
+      padding: 8px 10px;
+      font-size: 13px;
+      margin: 0;
+    }
+
+    .custom-attr-row .attr-remove {
+      background: transparent;
+      border: 1px solid #c55;
+      color: #e88;
+      padding: 6px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+
+    .custom-attr-row .attr-remove:hover {
+      background: rgba(204, 85, 85, 0.2);
+    }
+
+    /* System Settings & Ideas Sidebar */
+    .sidebar-section {
+      margin-bottom: 20px;
+    }
+
+    .sidebar-title {
+      font-size: 14px;
+      color: var(--text-secondary);
+      margin-bottom: 10px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .settings-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .settings-group button {
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border);
+      color: var(--text-primary);
+      padding: 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 13px;
+      transition: all 0.2s;
+      width: 100%;
+    }
+
+    .settings-group button:hover {
+      background: var(--border);
+      color: var(--accent);
+    }
+
+    .folder-path {
+      font-size: 11px;
+      color: var(--text-secondary);
+      word-break: break-all;
+      line-height: 1.4;
+    }
+
+    .sidebar-divider {
+      border: 0;
+      border-top: 1px solid var(--border);
+      margin: 16px 0;
+    }
+
+    .idea-input-box {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+
+    .idea-input-box input {
+      flex: 1;
+      background: var(--bg-primary);
+      border: 1px solid var(--border);
+      color: var(--text-primary);
+      padding: 6px 8px;
+      border-radius: 4px;
+      font-size: 13px;
+      min-width: 0;
+    }
+
+    .idea-input-box input:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    .idea-input-box button {
+      background: var(--accent);
+      border: none;
+      color: var(--bg-primary);
+      width: 28px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 18px;
+      line-height: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .idea-input-box button:hover {
+      background: var(--accent-hover);
+    }
+
+    .idea-list {
+      flex: 1;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      min-height: 100px;
+    }
+
+    .idea-item {
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 8px;
+      font-size: 13px;
+      color: var(--text-primary);
+      cursor: grab;
+      position: relative;
+      transition: all 0.2s;
+      word-break: break-word;
+    }
+
+    .idea-item:hover {
+      border-color: var(--accent);
+    }
+
+    .idea-item:active {
+      cursor: grabbing;
+    }
+
+    .idea-item .idea-date {
+      font-size: 10px;
+      color: var(--text-secondary);
+      margin-top: 4px;
+      display: block;
+    }
+
+    /* Drag over effect for calendar cell */
+    .modal-type-group {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    
+    .type-radio {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      color: var(--text-secondary);
+    }
+    
+    .type-radio input {
+      width: auto;
+      margin: 0;
+    }
+    
+    .type-radio.selected {
+      color: var(--accent);
+      font-weight: 500;
+    }
+
+    .time-inputs {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 16px;
+      align-items: center;
+      display: none; /* Hidden by default */
+    }
+    
+    .time-inputs.show {
+      display: flex;
+    }
+
+    .time-field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      flex: 1;
+    }
+    
+    .time-field label {
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
+    
+    .time-field input {
+      margin: 0;
+      padding: 6px;
+      font-size: 13px;
+    }
+
+    .dot.meeting {
+      background-color: #ffd700; /* Gold/Yellow for Meeting */
+    }
+    
+    .cell-event-item.meeting {
+      /* Special style for meeting? */
+    }
+    
+    .meeting-time {
+      font-size: 10px;
+      color: var(--text-secondary);
+      margin-left: auto;
+      padding-left: 4px;
+      flex-shrink: 0;
+    }
+
+    /* Red Triangle Indicator */
+    .cross-day-triangle {
+        width: 0;
+        height: 0;
+        border-top: 4px solid transparent;
+        border-bottom: 4px solid transparent;
+        border-left: 6px solid #e57373;
+        margin-right: 4px;
+        display: inline-block;
+    }
+
+    /* Kanban Board */
+    .kanban-board {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        margin-bottom: 20px;
+    }
+
+    .kanban-header-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+    }
+
+    .kanban-filter-select {
+        background: var(--bg-tertiary);
+        border: 1px solid var(--border);
+        color: var(--text-primary);
+        font-size: 11px;
+        padding: 2px 6px;
+        border-radius: 4px;
+        outline: none;
+    }
+
+    .kanban-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        max-height: 300px;
+        overflow-y: auto;
+    }
+
+    .kanban-item {
+        background: var(--bg-tertiary);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        padding: 8px;
+        font-size: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        cursor: pointer;
+    }
+
+    .kanban-item:hover {
+        border-color: var(--accent);
+    }
+
+    .kanban-item-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .kanban-item-title {
+        font-weight: 500;
+        color: var(--text-primary);
+    }
+
+    .kanban-item-date {
+        font-size: 10px;
+        color: var(--text-secondary);
+    }
+
+    .kanban-item-badge {
+        font-size: 9px;
+        padding: 1px 4px;
+        border-radius: 2px;
+        background: rgba(229, 115, 115, 0.1);
+        color: #e57373;
+    }
+
+    /* Collapsible Sidebar Sections */
+    .sidebar-section-header {
+        display: flex;
+        align-items: center;
+        cursor: pointer;
+        padding: 4px 0;
+        user-select: none;
+        transition: color 0.2s;
+    }
+
+    .sidebar-section-header:hover {
+        color: var(--accent);
+    }
+
+    .sidebar-section-header:hover .sidebar-title {
+        color: var(--accent);
+    }
+
+    .sidebar-arrow {
+        font-size: 10px;
+        margin-right: 6px;
+        transition: transform 0.2s;
+        color: var(--text-secondary);
+        display: inline-block;
+        width: 10px;
+        text-align: center;
+    }
+
+    .sidebar-section.collapsed .sidebar-arrow {
+        transform: rotate(-90deg);
+    }
+
+    .sidebar-section.collapsed .sidebar-section-content {
+        display: none !important;
+    }
+    
+    .sidebar-section-content {
+        /* Wrapper for content to be hidden */
+    }
+    
+    /* Adjustments for existing headers inside the new structure */
+    .sidebar-section-header .sidebar-title {
+        margin-bottom: 0;
+        flex: 1;
+    }
+
+    /* Small Export Button */
+    .search-action-btn {
+        background: var(--bg-tertiary);
+        border: 1px solid var(--border);
+        color: var(--text-secondary);
+        width: 28px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+        line-height: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    /* Dashboard Styles */
+    .dashboard-bar {
+        display: flex;
+        align-items: center;
+        gap: 8px; /* Reduced gap */
+        margin-right: 8px;
+        background: var(--bg-tertiary);
+        padding: 4px 8px; /* Reduced padding */
+        border-radius: 6px;
+        border: 1px solid var(--border);
+        flex-shrink: 0; /* Prevent shrinking */
+    }
+    
+    .dashboard-item {
+        display: flex;
+        align-items: center;
+        gap: 2px; /* Reduced gap */
+        font-size: 11px; /* Smaller font */
+        color: var(--text-secondary);
+    }
+    
+    .dashboard-value {
+        font-weight: 600;
+        color: var(--text-primary);
+    }
+    
+    .dashboard-value.highlight {
+        color: var(--accent);
+    }
+    
+    /* Responsive Header Elements */
+    @media (max-width: 1200px) {
+        .calendar-nav button {
+            padding: 4px 8px; /* Smaller button padding */
+            font-size: 12px;
+        }
+        
+        .calendar-nav {
+            gap: 8px;
+        }
+        
+        .calendar-title {
+            font-size: 1.2rem; /* Smaller title */
+        }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <!-- 左侧边栏 -->
+    <aside class="sidebar sidebar-left" id="sidebarLeft">
+      <div class="sidebar-header">
+        <div class="sidebar-title-text">
+            <span>快捷</span>
+            <span>操作</span>
+        </div>
+        <button class="sidebar-toggle" onclick="toggleSidebar('sidebarLeft')" aria-label="收起侧边栏">◀</button>
+      </div>
+      <div class="sidebar-content" style="display: flex; flex-direction: column;">
+        <!-- System Settings -->
+        <div class="sidebar-section">
+            <div class="sidebar-section-header" onclick="toggleSection(this)">
+                <span class="sidebar-arrow">▼</span>
+                <h4 class="sidebar-title">系统设置</h4>
+            </div>
+            <div class="sidebar-section-content settings-group">
+                <button id="btnSelectFolder" onclick="selectFolder()" style="background: var(--accent); color: white; border: none; font-weight: 500;">连接本地工作目录</button>
+                <div id="folderPath" class="folder-path">未选择</div>
+                <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 8px; line-height: 1.3;">
+                    ⚠️ 数据将保存在您的硬盘，网页不会上传任何私密内容。
+                </div>
+                <div style="margin-top: 8px;">
+                    <label style="font-size:12px; color:var(--text-secondary); display:block; margin-bottom:4px;">自定义标题</label>
+                    <input type="text" id="customTitleInput" placeholder="输入个性签名/标题..." oninput="updateCustomTitle(this.value)" style="width:100%; padding:6px; background:var(--bg-primary); border:1px solid var(--border); color:var(--text-primary); border-radius:4px; font-size:12px;">
+                </div>
+                <div style="display: flex; gap: 8px; margin-top: 8px;">
+                    <button onclick="toggleTheme()" style="width: 100%;">切换主题</button>
+                    <button onclick="showHelp()" style="width: 100%;">使用帮助</button>
+                </div>
+                <div style="margin-top: 12px;">
+                    <label style="font-size:12px; color:var(--text-secondary); display:block; margin-bottom:4px;">字体大小</label>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <input type="range" id="fontSizeSlider" min="10" max="18" step="1" value="13" oninput="changeFontSize(this.value)" style="flex:1;">
+                        <span id="fontSizeDisplay" style="font-size:12px; color:var(--text-primary); width:24px; text-align:right;">13</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <hr class="sidebar-divider">
+
+        <!-- Idea Box -->
+        <div class="sidebar-section" id="ideaContainer" style="flex: 1; display: flex; flex-direction: column; overflow: hidden; margin-bottom: 0;">
+            <div class="sidebar-section-header" onclick="toggleSection(this)">
+                <span class="sidebar-arrow">▼</span>
+                <h4 class="sidebar-title">灵感想法 (GTD)</h4>
+            </div>
+            <div class="sidebar-section-content" style="flex: 1; display: flex; flex-direction: column; overflow: hidden;">
+                <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 8px; padding-left: 2px;">(双击空白处添加灵感)</div>
+                <div id="ideaList" class="idea-list">
+                    <!-- Ideas go here -->
+                </div>
+            </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- 主内容 -->
+    <main class="main-content">
+      <header class="calendar-header">
+        <h1 class="calendar-title" id="calendarTitle">2025年1月</h1>
+        <div style="flex: 1; display: flex; justify-content: center; align-items: center; gap: 6px; cursor: pointer; min-width: 0; padding: 0 10px; flex-wrap: wrap;" onclick="focusCustomTitleInput()" title="点击编辑标题">
+            <div id="appCustomTitle" style="font-size: 16px; font-weight: bold; color: var(--accent); white-space: normal; word-break: break-all; overflow: hidden; max-width: 100%; text-align: center; line-height: 1.2;"></div>
+            <span style="font-size: 12px; color: var(--text-secondary); opacity: 0.5; flex-shrink: 0; align-self: center;">✎</span>
+        </div>
+        <div class="calendar-nav">
+          <div class="dashboard-bar" id="dashboard">
+              <div class="dashboard-item">
+                  <span>灵感</span>
+                  <span class="dashboard-value highlight" id="dashIdeas">0</span>
+              </div>
+              <div class="dashboard-item">
+                  <span>任务</span>
+                  <span class="dashboard-value" id="dashTasks">0/0</span>
+              </div>
+              <div class="dashboard-item">
+                  <span>会议</span>
+                  <span class="dashboard-value" id="dashMeetings">0</span>
+              </div>
+              <div class="dashboard-item">
+                  <span>记事</span>
+                  <span class="dashboard-value" id="dashNotes">0</span>
+              </div>
+          </div>
+          <!-- Sync button removed -->
+          <button onclick="prevMonth()">↑ 上月</button>
+          <button onclick="today()">今天</button>
+          <button onclick="nextMonth()">下月 ↓</button>
+        </div>
+      </header>
+
+      <div class="calendar-grid" id="calendarGrid">
+        <!-- 星期标题 -->
+        <div class="weekday-header">周日</div>
+        <div class="weekday-header">周一</div>
+        <div class="weekday-header">周二</div>
+        <div class="weekday-header">周三</div>
+        <div class="weekday-header">周四</div>
+        <div class="weekday-header">周五</div>
+        <div class="weekday-header">周六</div>
+        <!-- 日期格子由 JS 动态生成 -->
+      </div>
+    </main>
+    
+    <script>
+    // Global Week Number Helper
+    function getWeekNumber(d) {
+        // Copy date so don't modify original
+        d = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+        // Set to nearest Thursday: current date + 4 - current day number
+        // Make Sunday's day number 7
+        d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay()||7));
+        // Get first day of year
+        var yearStart = new Date(Date.UTC(d.getUTCFullYear(),0,1));
+        // Calculate full weeks to nearest Thursday
+        var weekNo = Math.ceil(( ( (d - yearStart) / 86400000) + 1)/7);
+        return weekNo;
+    }
+    </script>
+
+    <!-- 右侧边栏 -->
+    <aside class="sidebar sidebar-right right" id="sidebarRight">
+      <div class="sidebar-header">
+        <div class="sidebar-title-text">
+            <span>数据</span>
+            <span>看板</span>
+        </div>
+        <button class="sidebar-toggle" onclick="toggleSidebar('sidebarRight')" aria-label="收起侧边栏">▶</button>
+      </div>
+      <div class="sidebar-content">
+        <!-- Work Kanban -->
+        <div class="sidebar-section kanban-board">
+            <div class="sidebar-section-header" onclick="toggleSection(this)">
+                <span class="sidebar-arrow">▼</span>
+                <h4 class="sidebar-title" style="margin-bottom:0">工作看板</h4>
+            </div>
+            <div class="sidebar-section-content">
+                <div class="kanban-header-row" style="margin-bottom: 8px;">
+                    <select id="kanbanFilter" class="kanban-filter-select" onchange="renderKanban()" style="width: 100%;">
+                        <option value="today">今日到期未完</option>
+                        <option value="3days">近3天到期</option>
+                    </select>
+                </div>
+                <div id="kanbanList" class="kanban-list">
+                    <!-- Kanban items go here -->
+                </div>
+            </div>
+        </div>
+
+        <hr class="sidebar-divider" style="margin-top: 0;">
+
+        <div class="sidebar-section">
+            <div class="sidebar-section-header" onclick="toggleSection(this)">
+                <span class="sidebar-arrow">▼</span>
+                <h4 class="sidebar-title">全文检索</h4>
+            </div>
+            <div class="sidebar-section-content">
+                <div class="idea-input-box">
+                    <input type="text" id="searchInput" placeholder="搜索..." onkeyup="handleSearch(event)">
+                    <button class="search-action-btn" onclick="performSearch()" title="搜索">🔍</button>
+                    <button class="search-action-btn" onclick="exportSearchResults()" title="聚合输出 (导出为Markdown)">⬇</button>
+                </div>
+                <div id="searchResults" style="font-size: 12px; color: var(--text-secondary); max-height: 300px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;"></div>
+            </div>
+        </div>
+        
+        <hr class="sidebar-divider">
+        
+        <div class="sidebar-section">
+            <div class="sidebar-section-header" onclick="toggleSection(this)">
+                <span class="sidebar-arrow">▼</span>
+                <h4 class="sidebar-title">数据导出</h4>
+            </div>
+            <div class="sidebar-section-content settings-group">
+                <button onclick="exportReport('week')">导出本周周报</button>
+                <button onclick="exportReport('month')">导出本月月报</button>
+            </div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- 日期点击弹窗 -->
+  <div class="modal-overlay" id="modalOverlay">
+    <!-- Help Modal -->
+    <div class="modal" id="helpModal" style="display: none; max-width: 600px;">
+        <h3 class="modal-title" style="margin-bottom: 16px;">使用帮助 & 安装指南</h3>
+        <div style="font-size: 13px; line-height: 1.6; color: var(--text-secondary); max-height: 400px; overflow-y: auto;">
+            <p><strong>1. 数据存储 (Local First)</strong><br>本应用没有云端账号。所有数据存储在您选择的本地文件夹中（Journal/Inbox）。<br>要切换“账号”，只需点击左侧“连接本地工作目录”选择不同的文件夹即可。</p>
+            <p style="margin-top:10px;"><strong>2. 封装与安装 (PWA)</strong><br>本应用已配置为 PWA (Progressive Web App)。<br><strong>安装方法：</strong>在 Chrome 或 Edge 浏览器地址栏右侧，点击“安装应用”图标（通常是一个带加号的电脑图标），即可将其安装为独立桌面应用。</p>
+            <p style="margin-top:10px;"><strong>3. 快捷操作</strong><br>- <strong>双击日期</strong>：新建事项<br>- <strong>拖拽灵感</strong>：将右侧灵感拖入日历即可安排日程<br>- <strong>搜索</strong>：支持全文检索和聚合导出 Markdown</p>
+        </div>
+        <div class="modal-buttons" style="margin-top: 20px;">
+            <button class="modal-save" onclick="closeHelp()">关闭</button>
+        </div>
+    </div>
+
+    <div class="modal" id="eventModal">
+      <div class="modal-title-bar">
+          <h3 class="modal-title" id="modalTitle">添加事项 - 2025年1月15日</h3>
+          <button class="modal-expand-btn" id="modalExpandBtn" onclick="toggleModalFullscreen()">展开</button>
+      </div>
+      <div class="modal-type-group">
+        <label class="type-radio">
+          <input type="radio" name="itemType" value="meeting"> 会议
+        </label>
+        <label class="type-radio">
+          <input type="radio" name="itemType" value="task" checked> 任务
+        </label>
+        <label class="type-radio">
+          <input type="radio" name="itemType" value="note"> 随笔
+        </label>
+      </div>
+
+      <div class="time-inputs" id="timeInputs">
+        <div class="time-field">
+            <label>开始时间</label>
+            <input type="time" id="modalStartTime">
+        </div>
+        <div class="time-field">
+            <label>结束日期 (可选)</label>
+            <input type="date" id="modalEndDate">
+        </div>
+        <div class="time-field">
+            <label>结束时间</label>
+            <input type="time" id="modalEndTime">
+        </div>
+      </div>
+
+      <input type="text" id="eventInput" placeholder="输入事项内容..." />
+      <textarea id="eventDesc" rows="3" placeholder="备注（可选）"></textarea>
+      
+      <!-- 样式选项 -->
+      <div class="modal-section" style="margin-bottom: 12px;">
+        <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 8px;">标题样式</div>
+        <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+          <label class="modal-checkbox" style="margin: 0;">
+            <input type="checkbox" id="styleBold" />
+            <span>加粗</span>
+          </label>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span style="font-size: 13px; color: var(--text-secondary);">颜色:</span>
+            <input type="color" id="styleColor" value="#5ba3dc" style="width: 32px; height: 24px; padding: 0; border: 1px solid var(--border); border-radius: 4px; cursor: pointer;" />
+            <button type="button" onclick="resetColor()" style="font-size: 11px; padding: 2px 6px; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-secondary); border-radius: 3px; cursor: pointer;">重置</button>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Removed old checkboxes, replaced by type-radio group above -->
+      <label class="modal-checkbox" id="asTaskLabel" style="display: none;">
+        <input type="checkbox" id="asTaskCheck" />
+      </label>
+      <label class="modal-checkbox" id="asRecordLabel" style="display: none;">
+        <input type="checkbox" id="asRecordCheck" />
+      </label>
+
+      <!-- 自定义属性 -->
+      <div class="modal-section" style="margin-bottom: 16px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+          <span style="font-size: 13px; color: var(--text-secondary);">自定义属性</span>
+          <button type="button" onclick="addCustomAttr()" style="font-size: 12px; padding: 4px 10px; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--accent); border-radius: 4px; cursor: pointer;">+ 添加属性</button>
+        </div>
+        <div id="customAttrsContainer"></div>
+      </div>
+
+      <div class="modal-buttons">
+        <button class="modal-cancel" onclick="closeModal()">取消</button>
+        <button class="modal-delete" id="modalDelete" onclick="deleteEvent()" style="display: none;">删除</button>
+        <button class="modal-save" onclick="saveEvent()">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 悬停浮窗 -->
+  <div class="event-tooltip" id="eventTooltip">
+    <div class="tooltip-badge" id="tooltipBadge"></div>
+    <div class="tooltip-title" id="tooltipTitle"></div>
+    <div class="tooltip-desc" id="tooltipDesc"></div>
+    <div class="tooltip-attrs" id="tooltipAttrs"></div>
+  </div>
+
+  <script>
+    // --- Lunar Calendar Logic ---
+    const Lunar = {
+        // Lunar info 1900-2100 (Simplified version for space, covering user's range 2020-2030 is safer if code limit)
+        // Structure: [LeapMonth, LunarMonthCodes...] 
+        // We will use a compact algorithm.
+        
+        calendarInfo: [
+            0x04bd8,0x04ae0,0x0a570,0x054d5,0x0d260,0x0d950,0x16554,0x056a0,0x09ad0,0x055d2, //1900-1909
+            0x04ae0,0x0a5b6,0x0a4d0,0x0d250,0x1d255,0x0b540,0x0d6a0,0x0ada2,0x095b0,0x14977, //1910-1919
+            0x04970,0x0a4b0,0x0b4b5,0x06a50,0x06d40,0x1ab54,0x02b60,0x09570,0x052f2,0x04970, //1920-1929
+            0x06566,0x0d4a0,0x0ea50,0x06e95,0x05ad0,0x02b60,0x186e3,0x092e0,0x1c8d7,0x0c950, //1930-1939
+            0x0d4a0,0x1d8a6,0x0b550,0x056a0,0x1a5b4,0x025d0,0x092d0,0x0d2b2,0x0a950,0x0b557, //1940-1949
+            0x06ca0,0x0b550,0x15355,0x04da0,0x0a5d0,0x14573,0x052d0,0x0a9a8,0x0e950,0x06aa0, //1950-1959
+            0x0aea6,0x0ab50,0x04b60,0x0aae4,0x0a570,0x05260,0x0f263,0x0d950,0x05b57,0x056a0, //1960-1969
+            0x096d0,0x04dd5,0x04ad0,0x0a4d0,0x0d4d4,0x0d250,0x0d558,0x0b540,0x0b5a0,0x195a6, //1970-1979
+            0x095b0,0x049b0,0x0a974,0x0a4b0,0x0b27a,0x06a50,0x06d40,0x0af46,0x0ab60,0x09570, //1980-1989
+            0x04af5,0x04970,0x064b0,0x074a3,0x0ea50,0x06b58,0x055c0,0x0ab60,0x096d5,0x092e0, //1990-1999
+            0x0c960,0x0d954,0x0d4a0,0x0da50,0x07552,0x056a0,0x0abb7,0x025d0,0x092d0,0x0cab5, //2000-2009
+            0x0a950,0x0b4a0,0x0baa4,0x0ad50,0x055d9,0x04ba0,0x0a5b0,0x15176,0x052b0,0x0a930, //2010-2019
+            0x07954,0x06aa0,0x0ad50,0x05b52,0x04b60,0x0a6e6,0x0a4e0,0x0d260,0x0ea65,0x0d530, //2020-2029
+            0x05aa0,0x076a3,0x096d0,0x04bd7,0x04ad0,0x0a4d0,0x1d0b6,0x0d250,0x0d520,0x0dd45, //2030-2039
+            0x0b5a0,0x056d0,0x055b2,0x049b0,0x0a577,0x0a4b0,0x0aa50,0x1b255,0x06d20,0x0ada0, //2040-2049
+        ],
+        
+        // Month days: 1=30days, 0=29days. 
+        // 12 bits for 12 months. Leap month follows.
+        
+        getLunarDate: function(year, month, day) {
+            // Basic limit
+            if (year < 1900 || year > 2049) return null;
+            
+            let i, leap = 0, temp = 0;
+            let offset = (Date.UTC(year, month - 1, day) - Date.UTC(1900, 0, 31)) / 86400000;
+            
+            for (i = 1900; i < 2050 && offset > 0; i++) {
+                temp = this.getYearDays(i);
+                offset -= temp;
+            }
+            
+            if (offset < 0) {
+                offset += temp;
+                i--;
+            }
+            
+            let lunarYear = i;
+            leap = this.leapMonth(i); // Leap month number, 0 if none
+            let isLeap = false;
+            
+            for (i = 1; i < 13 && offset > 0; i++) {
+                // Month days
+                if (leap > 0 && i === (leap + 1) && !isLeap) {
+                    --i;
+                    isLeap = true;
+                    temp = this.leapDays(lunarYear);
+                } else {
+                    temp = this.monthDays(lunarYear, i);
+                }
+                
+                // Adjustment
+                if (isLeap && i === (leap + 1)) isLeap = false;
+                
+                offset -= temp;
+            }
+            
+            if (offset === 0 && leap > 0 && i === leap + 1) {
+                if (isLeap) {
+                    isLeap = false;
+                } else {
+                    isLeap = true;
+                    --i;
+                }
+            }
+            
+            if (offset < 0) {
+                offset += temp;
+                --i;
+            }
+            
+            let lunarMonth = i;
+            let lunarDay = offset + 1;
+            
+            return {
+                year: lunarYear,
+                month: lunarMonth,
+                day: lunarDay,
+                isLeap: isLeap,
+                dayStr: this.toChinaDay(lunarDay),
+                monthStr: (isLeap ? "闰" : "") + this.toChinaMonth(lunarMonth)
+            };
+        },
+        
+        leapMonth: function(y) {
+            return (this.calendarInfo[y - 1900] & 0xf);
+        },
+        
+        monthDays: function(y, m) {
+            return ((this.calendarInfo[y - 1900] & (0x10000 >> m)) ? 30 : 29);
+        },
+        
+        leapDays: function(y) {
+            if (this.leapMonth(y)) {
+                return ((this.calendarInfo[y - 1900] & 0x10000) ? 30 : 29);
+            }
+            return 0;
+        },
+        
+        getYearDays: function(y) {
+            let i, sum = 348;
+            for (i = 0x8000; i > 0x8; i >>= 1) {
+                sum += (this.calendarInfo[y - 1900] & i) ? 1 : 0;
+            }
+            return (sum + this.leapDays(y));
+        },
+        
+        toChinaMonth: function(m) {
+            const s = ["正", "二", "三", "四", "五", "六", "七", "八", "九", "十", "冬", "腊"];
+            return s[m - 1];
+        },
+        
+        toChinaDay: function(d) {
+            const s = ["初", "十", "廿", "三十"];
+            let i;
+            if (d === 10) return "初十";
+            if (d === 20) return "二十";
+            if (d === 30) return "三十";
+            return s[Math.floor(d / 10)] + ((d % 10 === 0) ? "" : (d % 10 === 1 && Math.floor(d/10) !== 0 ? "一" : ["一", "二", "三", "四", "五", "六", "七", "八", "九"][d % 10 - 1]));
+        }
+    };
+    
+    function getHoliday(date, lunar) {
+        if (!lunar) return null;
+        const m = date.getMonth() + 1;
+        const d = date.getDate();
+        const lm = lunar.month;
+        const ld = lunar.day;
+        
+        // Solar Holidays
+        if (m === 1 && d === 1) return "元旦";
+        if (m === 5 && d === 1) return "劳动节";
+        if (m === 10 && d === 1) return "国庆节";
+        
+        // Simple Qingming check for 2025-2030
+        const y = date.getFullYear();
+        if (m === 4) {
+            if (y === 2025 && d === 4) return "清明节";
+            if (y === 2026 && d === 5) return "清明节";
+            if (y === 2027 && d === 5) return "清明节";
+            if (y === 2028 && d === 4) return "清明节";
+            if (y === 2029 && d === 4) return "清明节";
+            if (y === 2030 && d === 5) return "清明节";
+        }
+        
+        // Lunar Holidays
+        if (!lunar.isLeap) {
+            if (lm === 1 && ld === 1) return "春节";
+            if (lm === 1 && ld === 15) return "元宵节";
+            if (lm === 5 && ld === 5) return "端午节";
+            if (lm === 8 && ld === 15) return "中秋节";
+            if (lm === 9 && ld === 9) return "重阳节";
+            
+            // 除夕 (Last day of 12th lunar month)
+            // Calculate next day
+            // Or simpler: check if tomorrow is Lunar 1.1
+            // But we don't have tomorrow's lunar calculated easily without calling function again.
+            // Let's use simple logic: if Month is 12 and Day is 29 or 30 (depending on month size)
+            if (lm === 12) {
+                const daysInMonth = Lunar.monthDays(lunar.year, 12);
+                if (ld === daysInMonth) return "除夕";
+            }
+        }
+        
+        return null;
+    }
+
+    let currentDate = new Date();
+    let rawEvents = JSON.parse(localStorage.getItem('calendarEvents') || '{}');
+    let events = migrateEvents(rawEvents);
+    let selectedDateKey = null;
+    let editingItemId = null;
+    let editingType = 'event'; // 'event' or 'idea'
+
+    function migrateEvents(raw) {
+      const result = {};
+      for (const [dateKey, val] of Object.entries(raw)) {
+        if (Array.isArray(val)) {
+          result[dateKey] = val.map(item => ({
+            id: item.id || uuid(),
+            title: item.title || '',
+            desc: item.desc || '',
+            type: item.type || (item.isTask ? 'task' : 'note'),
+            isTask: !!item.isTask,
+            startTime: item.startTime || '',
+            endTime: item.endTime || '',
+            endDate: item.endDate || '',
+            completed: !!item.completed,
+            bold: !!item.bold,
+            color: item.color || '',
+            fileName: item.fileName,
+            customAttrs: Array.isArray(item.customAttrs) ? item.customAttrs : [],
+            created: item.created
+          }));
+        } else if (val && typeof val === 'object' && val.title !== undefined) {
+          result[dateKey] = [{
+            id: uuid(),
+            title: val.title || '',
+            desc: val.desc || '',
+            isTask: false,
+            completed: false,
+            bold: false,
+            color: '',
+            customAttrs: []
+          }];
+        }
+      }
+      return result;
+    }
+
+    function uuid() {
+      return 'id_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+    }
+
+    function toggleSidebar(id) {
+      const sidebar = document.getElementById(id);
+      const btn = sidebar.querySelector('.sidebar-toggle');
+      sidebar.classList.toggle('collapsed');
+      btn.textContent = sidebar.classList.contains('collapsed') 
+        ? (id === 'sidebarLeft' ? '▶' : '◀') 
+        : (id === 'sidebarLeft' ? '◀' : '▶');
+    }
+
+    function toggleModalFullscreen() {
+        const modal = document.getElementById('eventModal');
+        const btn = document.getElementById('modalExpandBtn');
+        modal.classList.toggle('fullscreen');
+        if (modal.classList.contains('fullscreen')) {
+            btn.textContent = '缩小';
+        } else {
+            btn.textContent = '展开';
+        }
+    }
+
+    function changeFontSize(val) {
+        document.documentElement.style.setProperty('--event-font-size', val + 'px');
+        localStorage.setItem('calendarFontSize', val);
+        const display = document.getElementById('fontSizeDisplay');
+        if (display) display.textContent = val;
+    }
+
+    // Init Font Size
+    (function() {
+        const savedFontSize = localStorage.getItem('calendarFontSize') || '13';
+        document.documentElement.style.setProperty('--event-font-size', savedFontSize + 'px');
+        const fsSlider = document.getElementById('fontSizeSlider');
+        if (fsSlider) {
+            fsSlider.value = savedFontSize;
+            const display = document.getElementById('fontSizeDisplay');
+            if (display) display.textContent = savedFontSize;
+        }
+    })();
+
+    function getDateKey(date) {
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    }
+
+    function renderCalendar() {
+      const grid = document.getElementById('calendarGrid');
+      const year = currentDate.getFullYear();
+      const month = currentDate.getMonth();
+      
+      document.getElementById('calendarTitle').textContent = `${year}年${month + 1}月`;
+
+      const cells = grid.querySelectorAll('.calendar-cell');
+      cells.forEach(c => c.remove());
+
+      const firstDay = new Date(year, month, 1);
+      const lastDay = new Date(year, month + 1, 0);
+      const startOffset = firstDay.getDay(); // 周日=0
+      const totalDays = lastDay.getDate();
+      const prevMonthDays = new Date(year, month, 0).getDate();
+      const today = new Date();
+      
+      // 计算需要的行数（只显示到当月最后一天所在行）
+      const totalCells = startOffset + totalDays;
+      const numRows = Math.ceil(totalCells / 7);
+      
+      // 动态设置grid行数
+      grid.style.gridTemplateRows = `40px repeat(${numRows}, minmax(80px, auto))`;
+      
+      // Pre-process expiring tasks map: dateKey (End Date) -> count of expiring tasks that are cross-day
+      const expiringTasksMap = {};
+      Object.keys(events).forEach(startKey => {
+          events[startKey].forEach(item => {
+              if (item.isTask && item.endDate && item.endDate !== startKey) {
+                  // It is a cross-day task
+                  if (!expiringTasksMap[item.endDate]) expiringTasksMap[item.endDate] = 0;
+                  expiringTasksMap[item.endDate]++;
+              }
+          });
+      });
+
+      let html = '';
+      let weekNumber = 1; // 周次计数
+      
+      for (let i = 0; i < startOffset + totalDays; i++) {
+        let date, isOtherMonth = false;
+        if (i < startOffset) {
+          const d = prevMonthDays - startOffset + i + 1;
+          date = new Date(year, month - 1, d);
+          isOtherMonth = true;
+        } else {
+          date = new Date(year, month, i - startOffset + 1);
+        }
+
+        const dateKey = getDateKey(date);
+        const isToday = date.toDateString() === today.toDateString();
+        const rawItems = events[dateKey] || [];
+        // 排序：会议 > 任务 > 笔记 -> 开始时间 -> 创建时间 -> 标题 -> 文件名
+        const items = [...rawItems].sort((a, b) => {
+             const getWeight = (item) => {
+                 const t = item.type || (item.isTask ? 'task' : 'note');
+                 if (t === 'meeting') return 1;
+                 if (t === 'task') return 2;
+                 return 3;
+             };
+             const wa = getWeight(a);
+             const wb = getWeight(b);
+             if (wa !== wb) return wa - wb;
+             
+             // Start Time
+             if (a.startTime && b.startTime) {
+                 const timeCompare = a.startTime.localeCompare(b.startTime);
+                 if (timeCompare !== 0) return timeCompare;
+             }
+
+             // Created Time (Newest first? Or Oldest first? Usually Oldest first for list, Newest for stream. Calendar usually doesn't matter, but stability does.)
+             // Let's stick to Oldest First (Chronological)
+             if (a.created && b.created) {
+                 const cA = new Date(a.created).getTime();
+                 const cB = new Date(b.created).getTime();
+                 if (cA !== cB) return cA - cB;
+             }
+             
+             // Title
+             const titleCompare = (a.title || '').localeCompare(b.title || '');
+             if (titleCompare !== 0) return titleCompare;
+
+             // Filename (Absolute tie-breaker)
+             return (a.fileName || '').localeCompare(b.fileName || '');
+        });
+
+        const classes = ['calendar-cell'];
+        if (isOtherMonth) classes.push('other-month');
+        if (isToday) classes.push('today');
+        
+        // 判断是否是周日（每行第一个格子）
+        const isSunday = (i % 7 === 0);
+        
+        // Add drop handlers
+        html += `<div class="${classes.join(' ')}" data-date="${dateKey}" ondragover="allowDrop(event)" ondrop="drop(event)" ondragleave="dragLeave(event)">`;
+        
+        // 周日显示周次
+        if (isSunday) {
+          const wk = getWeekNumber(date);
+          html += `<div class="cell-date"><span class="week-number">WK${wk}</span>`;
+        } else {
+          html += `<div class="cell-date">`;
+        }
+
+        // Red Triangle Indicator for Cross-Day Tasks expiring today
+        if (expiringTasksMap[dateKey] > 0) {
+            html += `<div class="cross-day-triangle" title="${expiringTasksMap[dateKey]}个跨天任务今日到期"></div>`;
+        }
+
+        html += `<span>${date.getDate()}</span>`;
+
+        // Add Lunar info
+        const lunarDate = Lunar.getLunarDate(year, isOtherMonth ? (i < startOffset ? month : month + 2) : month + 1, date.getDate());
+        if (lunarDate) {
+            const holiday = getHoliday(date, lunarDate);
+            if (holiday) {
+                html += `<span class="lunar-text lunar-holiday">(${holiday})</span>`;
+            } else {
+                html += `<span class="lunar-text">(${lunarDate.dayStr})</span>`;
+            }
+        }
+
+        // Add Dots (Wait, dots are supposed to be after date usually? The original code had them in cell-date flex container)
+        // Original: cell-date -> text -> cell-dots.
+        // My change: cell-date -> (triangle) -> text -> lunar -> dots?
+        // Let's check original structure.
+        // Original: <div class="cell-date">... <span>date</span> ... <div class="cell-dots">...</div></div>
+        // My `cell-date` closes after `html += '</div>';` above.
+        // Wait, I closed `cell-date` too early in my thought block?
+        // Ah, `html += '</div>'; // Close cell-date` in my thought block was after dots.
+        // Let's ensure dots are inside cell-date.
+
+        // Dots
+        const hasMeetings = items.some(i => i.type === 'meeting');
+        const hasNotes = items.some(i => !i.isTask && i.type !== 'meeting');
+        const hasPendingTasks = items.some(i => i.isTask && !i.completed);
+        
+        if (hasMeetings || hasNotes || hasPendingTasks) {
+            html += `<div class="cell-dots">`;
+            if (hasMeetings) html += `<div class="dot meeting" title="有会议"></div>`;
+            if (hasPendingTasks) html += `<div class="dot task" title="有未完成任务"></div>`;
+            if (hasNotes) html += `<div class="dot note" title="有笔记"></div>`;
+            html += `</div>`;
+        }
+        
+        html += `</div>`; // Close cell-date
+        
+        if (items.length > 0) {
+          html += '<div class="cell-events-list">';
+          items.forEach(item => {
+            const itemClasses = ['cell-event-item'];
+            const type = item.type || (item.isTask ? 'task' : 'note');
+            
+            if (type === 'task') itemClasses.push('task');
+            if (type === 'meeting') itemClasses.push('meeting');
+            if (item.completed) itemClasses.push('completed');
+            
+            const attrsJson = escapeAttr(JSON.stringify(item.customAttrs || []));
+            // Modified: Start Time for both Meeting and Task
+            const startTimeStr = (item.startTime) ? item.startTime : '';
+            const endTimeStr = (type === 'task' && item.endTime) ? item.endTime : '';
+            
+            html += `<div class="${itemClasses.join(' ')}" draggable="true" ondragstart="dragEvent(event)" data-date="${dateKey}" data-id="${item.id}" data-title="${escapeAttr(item.title)}" data-desc="${escapeAttr(item.desc)}" data-task="${item.isTask}" data-type="${type}" data-completed="${item.completed}" data-attrs="${attrsJson}">`;
+            
+            // Start Time on LEFT for both
+            if (startTimeStr) {
+                html += `<span class="meeting-time" style="margin-right:4px; font-size:10px; color:var(--accent);">${startTimeStr}</span>`;
+            }
+            
+            if (type === 'task') {
+              html += `<div class="task-checkbox ${item.completed ? 'checked' : ''}" data-date="${dateKey}" data-id="${item.id}" role="button" tabindex="0"></div>`;
+            }
+            const textClasses = ['event-text'];
+            if (item.bold) textClasses.push('bold');
+            const colorStyle = item.color ? `color: ${item.color};` : '';
+            html += `<span class="${textClasses.join(' ')}" style="${colorStyle}">${escapeHtml(item.title || '(无标题)')}</span>`;
+            
+            if (endTimeStr) {
+                 html += `<span class="task-time" style="margin-left:4px; font-size:10px; color:var(--text-secondary);">${endTimeStr}</span>`;
+             }
+            
+            html += `</div>`;
+          });
+          html += '</div>';
+        }
+        html += '</div>';
+      }
+
+      grid.insertAdjacentHTML('beforeend', html);
+
+      grid.querySelectorAll('.calendar-cell').forEach(cell => {
+        cell.addEventListener('dblclick', (e) => {
+          if (!e.target.closest('.cell-event-item')) {
+            openModal(cell.dataset.date, null);
+          }
+        });
+      });
+
+      grid.querySelectorAll('.cell-event-item').forEach(item => {
+        item.addEventListener('dblclick', (e) => {
+          e.stopPropagation();
+          if (!e.target.closest('.task-checkbox')) {
+            openModal(item.dataset.date, item.dataset.id);
+          }
+        });
+        item.addEventListener('mouseenter', showTooltip);
+        item.addEventListener('mouseleave', hideTooltip);
+        item.addEventListener('mousemove', moveTooltip);
+      });
+
+      renderKanban();
+      updateDashboard();
+    }
+
+    function escapeHtml(s) {
+      const div = document.createElement('div');
+      div.textContent = s;
+      return div.innerHTML;
+    }
+
+    function escapeAttr(s) {
+      return String(s || '')
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    }
+
+    function showTooltip(e) {
+      const item = e.currentTarget;
+      const title = item.dataset.title || '(无标题)';
+      const desc = item.dataset.desc || '';
+      const isTask = item.dataset.task === 'true';
+      const completed = item.dataset.completed === 'true';
+      const isIdea = item.dataset.idea === 'true';
+
+      let attrs = [];
+      try { attrs = JSON.parse(item.dataset.attrs || '[]'); } catch(e) {}
+      
+      const tooltip = document.getElementById('eventTooltip');
+      document.getElementById('tooltipTitle').textContent = title;
+      document.getElementById('tooltipDesc').textContent = desc || '(无备注)';
+      const badge = document.getElementById('tooltipBadge');
+      
+      if (isIdea) {
+        badge.textContent = '灵感';
+      } else {
+        badge.textContent = isTask ? (completed ? '任务 · 已完成' : '任务') : '记录';
+      }
+      
+      badge.style.display = 'block';
+      
+      const attrsContainer = document.getElementById('tooltipAttrs');
+      if (attrs.length > 0) {
+        attrsContainer.innerHTML = attrs.map(a => 
+          `<div class="tooltip-attr"><span class="attr-name">${escapeHtml(a.name)}:</span> ${escapeHtml(a.value)}</div>`
+        ).join('');
+        attrsContainer.style.display = 'block';
+      } else {
+        attrsContainer.innerHTML = '';
+        attrsContainer.style.display = 'none';
+      }
+      
+      tooltip.classList.add('show');
+      moveTooltip(e);
+    }
+
+    function hideTooltip() {
+      document.getElementById('eventTooltip').classList.remove('show');
+    }
+
+    function moveTooltip(e) {
+      const tooltip = document.getElementById('eventTooltip');
+      if (!tooltip.classList.contains('show')) return;
+      const x = e.clientX, y = e.clientY;
+      const gap = 12;
+      let left = x + gap, top = y + gap;
+      const rect = tooltip.getBoundingClientRect();
+      if (left + rect.width > window.innerWidth) left = x - rect.width - gap;
+      if (top + rect.height > window.innerHeight) top = y - rect.height - gap;
+      if (left < 8) left = 8;
+      if (top < 8) top = 8;
+      tooltip.style.left = left + 'px';
+      tooltip.style.top = top + 'px';
+    }
+
+    function toggleTaskComplete(dateKey, itemId) {
+      const list = events[dateKey];
+      if (!list) return;
+      const item = list.find(i => i.id === itemId);
+      if (item && item.isTask) {
+        item.completed = !item.completed;
+        localStorage.setItem('calendarEvents', JSON.stringify(events));
+        renderCalendar();
+        saveEventToDisk(dateKey, item);
+      }
+    }
+
+    // --- File System & Ideas Logic ---
+
+    let dirHandle = null;
+    let ideas = JSON.parse(localStorage.getItem('calendarIdeas') || '[]');
+
+    // IDB Helpers for persisting Directory Handle
+    const DB_NAME = 'MyCalendarDB';
+    const STORE_NAME = 'settings';
+
+    function getDB() {
+        return new Promise((resolve, reject) => {
+            const request = indexedDB.open(DB_NAME, 1);
+            request.onupgradeneeded = (event) => {
+                const db = event.target.result;
+                if (!db.objectStoreNames.contains(STORE_NAME)) {
+                    db.createObjectStore(STORE_NAME);
+                }
+            };
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        });
+    }
+
+    async function storeHandle(handle) {
+        try {
+            const db = await getDB();
+            const tx = db.transaction(STORE_NAME, 'readwrite');
+            tx.objectStore(STORE_NAME).put(handle, 'dirHandle');
+        } catch (e) { console.error('IDB Store Error', e); }
+    }
+
+    async function getHandle() {
+        try {
+            const db = await getDB();
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction(STORE_NAME, 'readonly');
+                const req = tx.objectStore(STORE_NAME).get('dirHandle');
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => resolve(null);
+            });
+        } catch (e) { return null; }
+    }
+
+    // --- Helpers: Frontmatter & Subdirs ---
+    
+    function parseFrontmatter(text) {
+        const regex = /^---\s*[\r\n]+([\s\S]*?)[\r\n]+---\s*[\r\n]+([\s\S]*)$/;
+        const match = text.match(regex);
+        if (match) {
+            const yaml = match[1];
+            const body = match[2];
+            const metadata = {};
+            yaml.split('\n').forEach(line => {
+                const parts = line.split(':');
+                if (parts.length >= 2) {
+                    const key = parts[0].trim();
+                    const value = parts.slice(1).join(':').trim();
+                    metadata[key] = value;
+                }
+            });
+            return { metadata, body: body.trim() };
+        }
+        return { metadata: { title: text.split('\n')[0].replace(/^#\s+/, '') }, body: text };
+    }
+
+    function updateDashboard() {
+        const ideaCount = ideas.length;
+        let taskTotal = 0, taskCompleted = 0, meetingCount = 0, noteCount = 0;
+        
+        Object.values(events).forEach(list => {
+            list.forEach(item => {
+                const type = item.type || (item.isTask ? 'task' : 'note');
+                if (type === 'meeting') {
+                    meetingCount++;
+                } else if (type === 'task') {
+                    taskTotal++;
+                    if (item.completed) taskCompleted++;
+                } else {
+                    noteCount++;
+                }
+            });
+        });
+        
+        const elIdeas = document.getElementById('dashIdeas');
+        const elTasks = document.getElementById('dashTasks');
+        const elMeetings = document.getElementById('dashMeetings');
+        const elNotes = document.getElementById('dashNotes');
+        
+        if(elIdeas) elIdeas.textContent = ideaCount;
+        if(elTasks) elTasks.textContent = `${taskTotal}/${taskCompleted}`; // Total / Completed (User asked for Total/Completed or Completed/Total? "任务+合计数字/完成数字" -> Task + Total / Completed)
+        // Wait, "任务+合计数字/完成数字" usually means "Total / Completed" or "Completed / Total".
+        // Let's do "Total / Completed".
+        // Actually, user said "任务+合计数字/完成数字". 
+        // Let's stick to "Total / Completed" for now.
+        if(elMeetings) elMeetings.textContent = meetingCount;
+        if(elNotes) elNotes.textContent = noteCount;
+    }
+
+    // Helper to strip date prefix
+    function stripDatePrefix(title) {
+        if (!title) return '';
+        // Matches YYYY-MM-DD or YYYY.MM.DD followed by any separator (hyphen, underscore, space, dot)
+        return title.replace(/^\d{4}[-/\.]\d{1,2}[-/\.]\d{1,2}[-_\.\s]+/, '');
+    }
+
+    async function loadFromDisk() {
+        if (!dirHandle) return;
+        try {
+            // Events
+            let journalHandle;
+            try { journalHandle = await dirHandle.getDirectoryHandle('Journal'); } catch {}
+            
+            if (journalHandle) {
+                const newEvents = {};
+                for await (const entry of journalHandle.values()) {
+                    if (entry.kind === 'file' && entry.name.endsWith('.md')) {
+                        try {
+                            const file = await entry.getFile();
+                            const text = await file.text();
+                            const { metadata, body } = parseFrontmatter(text);
+                            
+                            let itemTitle = metadata.title;
+                            let itemDesc = body;
+
+                            // Attempt to extract title from H1 in body if not in YAML
+                            if (!itemTitle) {
+                                const h1Match = body.match(/^#\s+(.*)(\r?\n|$)/);
+                                if (h1Match) {
+                                    itemTitle = h1Match[1].trim();
+                                    // Remove the title line from description to avoid duplication
+                                    itemDesc = body.substring(h1Match[0].length).trim();
+                                }
+                            }
+
+                            // Fallback to filename
+                            if (!itemTitle) {
+                                itemTitle = entry.name.replace(/\.md$/i, '');
+                            }
+                            
+                            // Clean up title
+                            itemTitle = stripDatePrefix(itemTitle);
+                            
+                            let dateKey = null;
+                            const match = entry.name.match(/^(\d{4}-\d{2}-\d{2})/);
+                            if (match) {
+                                dateKey = match[1];
+                            } else if (metadata.date) {
+                                const dateMatch = metadata.date.match(/^\d{4}-\d{2}-\d{2}$/);
+                                if (dateMatch) dateKey = dateMatch[0];
+                            }
+                            
+                            if (dateKey) {
+                                const item = {
+                                    id: metadata.id || uuid(),
+                                    title: itemTitle,
+                                    desc: itemDesc,
+                                    type: metadata.type || 'note',
+                                    isTask: metadata.type === 'task',
+                                    completed: metadata.status === 'done',
+                                    startTime: metadata.startTime || '',
+                                    endTime: metadata.endTime || '',
+                                    endDate: metadata.endDate || '',
+                                    // Use file.lastModified for stable sorting if created is missing
+                                    created: metadata.created || (file.lastModified ? new Date(file.lastModified).toISOString() : new Date().toISOString()),
+                                    fileName: entry.name,
+                                    customAttrs: []
+                                };
+                                Object.keys(metadata).forEach(k => {
+                                    if(!['id','title','type','status','startTime','endTime','endDate','created','date'].includes(k)) {
+                                        item.customAttrs.push({name: k, value: metadata[k]});
+                                    }
+                                });
+                                if (!newEvents[dateKey]) newEvents[dateKey] = [];
+                                newEvents[dateKey].push(item);
+                            }
+                        } catch (err) { console.warn('Parse error', entry.name); }
+                    }
+                }
+                events = newEvents;
+                
+                // Sort events for stability
+                Object.keys(events).forEach(dateKey => {
+                    events[dateKey].sort((a, b) => {
+                         // Priority: Meeting > Task > Note
+                         const getWeight = (item) => {
+                             const t = item.type || (item.isTask ? 'task' : 'note');
+                             if (t === 'meeting') return 1;
+                             if (t === 'task') return 2;
+                             return 3;
+                         };
+                         const wa = getWeight(a);
+                         const wb = getWeight(b);
+                         if (wa !== wb) return wa - wb;
+                         
+                         // Then by Start Time
+                         if (a.startTime && b.startTime) {
+                             const timeCompare = a.startTime.localeCompare(b.startTime);
+                             if (timeCompare !== 0) return timeCompare;
+                         }
+                         
+                         // Then by Created Time
+                         if (a.created && b.created) {
+                             const createdCompare = new Date(a.created) - new Date(b.created);
+                             if (createdCompare !== 0) return createdCompare;
+                         }
+
+                         // Fallback to Title
+                         const titleCompare = (a.title || '').localeCompare(b.title || '');
+                         if (titleCompare !== 0) return titleCompare;
+                         
+                         // Final Fallback to Filename
+                         return (a.fileName || '').localeCompare(b.fileName || '');
+                    });
+                });
+
+                localStorage.setItem('calendarEvents', JSON.stringify(events));
+                renderCalendar();
+            }
+            
+            // Ideas
+            let inboxHandle;
+            try { inboxHandle = await dirHandle.getDirectoryHandle('Inbox'); } catch {}
+            if (inboxHandle) {
+                const newIdeas = [];
+                for await (const entry of inboxHandle.values()) {
+                    if (entry.kind === 'file' && entry.name.endsWith('.md')) {
+                        try {
+                            const file = await entry.getFile();
+                            const text = await file.text();
+                            const { metadata, body } = parseFrontmatter(text);
+                            
+                            let ideaTitle = metadata.title;
+                            let ideaDesc = body;
+
+                            if (!ideaTitle) {
+                                const h1Match = body.match(/^#\s+(.*)(\r?\n|$)/);
+                                if (h1Match) {
+                                    ideaTitle = h1Match[1].trim();
+                                    ideaDesc = body.substring(h1Match[0].length).trim();
+                                }
+                            }
+
+                            if (!ideaTitle) {
+                                ideaTitle = entry.name.replace(/\.md$/i, '');
+                            }
+                            
+                            // Clean up title
+                            ideaTitle = stripDatePrefix(ideaTitle);
+
+                            newIdeas.push({
+                                id: metadata.id || uuid(),
+                                text: ideaTitle,
+                                desc: ideaDesc,
+                                dateKey: metadata.date || getDateKey(new Date()),
+                                created: metadata.created ? new Date(metadata.created).getTime() : Date.now(),
+                                fileName: entry.name
+                            });
+                        } catch (e) {}
+                    }
+                }
+                newIdeas.sort((a, b) => b.created - a.created);
+                ideas = newIdeas;
+                localStorage.setItem('calendarIdeas', JSON.stringify(ideas));
+                renderIdeas();
+            }
+            updateDashboard();
+        } catch (e) {
+            console.error('Load failed', e);
+            alert('读取失败: ' + e.message);
+        }
+    }
+
+    function stringifyFrontmatter(metadata, body) {
+        let yaml = '---\n';
+        for (const [k, v] of Object.entries(metadata)) {
+            yaml += `${k}: ${v}\n`;
+        }
+        yaml += '---\n';
+        return yaml + '\n' + body;
+    }
+    
+    async function ensureSubdirs() {
+        if (!dirHandle) return;
+        try {
+            await dirHandle.getDirectoryHandle('Journal', { create: true });
+            await dirHandle.getDirectoryHandle('Inbox', { create: true });
+        } catch (e) {
+            console.error('Failed to create subdirs', e);
+        }
+    }
+    
+    // --- Theme & Search & Export ---
+    
+    function toggleTheme() {
+        const body = document.body;
+        const isLight = body.getAttribute('data-theme') === 'light';
+        body.setAttribute('data-theme', isLight ? 'dark' : 'light');
+        localStorage.setItem('calendarTheme', isLight ? 'dark' : 'light');
+    }
+    
+    // Load theme
+    if (localStorage.getItem('calendarTheme') === 'light') {
+        document.body.setAttribute('data-theme', 'light');
+    }
+
+    // Load custom title
+    const savedCustomTitle = localStorage.getItem('calendarCustomTitle');
+    if (savedCustomTitle) {
+        document.getElementById('customTitleInput').value = savedCustomTitle;
+        document.getElementById('appCustomTitle').textContent = savedCustomTitle;
+    }
+
+    function focusCustomTitleInput() {
+        const sidebar = document.getElementById('sidebarLeft');
+        // Ensure sidebar is expanded
+        if (sidebar.classList.contains('collapsed')) {
+            toggleSidebar('sidebarLeft');
+        }
+        
+        const input = document.getElementById('customTitleInput');
+        if (input) {
+            // Ensure settings section is expanded
+            const section = input.closest('.sidebar-section');
+            if (section && section.classList.contains('collapsed')) {
+                // If section is collapsed, just remove the class.
+                // The arrow rotation is handled by CSS .sidebar-section.collapsed .sidebar-arrow
+                section.classList.remove('collapsed');
+            }
+            
+            input.focus();
+            input.select();
+            
+            // Visual highlight
+            const originalBorder = input.style.borderColor;
+            input.style.borderColor = 'var(--accent)';
+            setTimeout(() => {
+                input.style.borderColor = originalBorder;
+            }, 1000);
+        }
+    }
+
+    function updateCustomTitle(val) {
+        document.getElementById('appCustomTitle').textContent = val;
+        localStorage.setItem('calendarCustomTitle', val);
+    }
+    
+    let currentSearchResults = [];
+
+    function toggleSection(header) {
+        const section = header.closest('.sidebar-section');
+        section.classList.toggle('collapsed');
+    }
+
+    function handleSearch(e) {
+        if (e.key === 'Enter') performSearch();
+    }
+    
+    function performSearch() {
+        const query = document.getElementById('searchInput').value.toLowerCase();
+        const results = document.getElementById('searchResults');
+        results.innerHTML = '';
+        currentSearchResults = [];
+        
+        if (!query) return;
+        
+        const hits = [];
+        
+        // Search Events
+        Object.entries(events).forEach(([date, list]) => {
+            list.forEach(item => {
+                if ((item.title && item.title.toLowerCase().includes(query)) || 
+                    (item.desc && item.desc.toLowerCase().includes(query))) {
+                    const hit = { type: 'event', date, item };
+                    hits.push(hit);
+                    currentSearchResults.push(hit);
+                }
+            });
+        });
+        
+        // Search Ideas
+        ideas.forEach(idea => {
+            if ((idea.text && idea.text.toLowerCase().includes(query)) ||
+                (idea.desc && idea.desc.toLowerCase().includes(query))) {
+                const hit = { type: 'idea', date: idea.dateKey, item: idea };
+                hits.push(hit);
+                currentSearchResults.push(hit);
+            }
+        });
+        
+        if (hits.length === 0) {
+            results.innerHTML = '<div>无搜索结果</div>';
+        } else {
+            hits.forEach(hit => {
+                const div = document.createElement('div');
+                div.style.padding = '6px';
+                div.style.background = 'var(--bg-primary)';
+                div.style.border = '1px solid var(--border)';
+                div.style.cursor = 'pointer';
+                div.innerHTML = `
+                    <div style="color:var(--accent); font-weight:bold;">${hit.date} <span style="font-size:10px; opacity:0.7">(${hit.type === 'event' ? (hit.item.isTask ? '任务' : '记录') : '灵感'})</span></div>
+                    <div>${escapeHtml(hit.type === 'event' ? hit.item.title : hit.item.text)}</div>
+                `;
+                div.onclick = () => {
+                    if (hit.type === 'event') {
+                        // Navigate to date if possible (simple impl: open modal)
+                        openModal(hit.date, hit.item.id);
+                    } else {
+                        openIdeaModal(hit.item.id);
+                    }
+                };
+                results.appendChild(div);
+            });
+        }
+    }
+
+    function exportSearchResults() {
+        if (!currentSearchResults || currentSearchResults.length === 0) {
+            alert('当前没有搜索结果可导出');
+            return;
+        }
+
+        const query = document.getElementById('searchInput').value;
+        let md = `# 搜索结果: ${query}\n\n`;
+        md += `导出时间: ${new Date().toLocaleString()}\n\n`;
+
+        currentSearchResults.forEach(hit => {
+            md += `## ${hit.date} (${hit.type === 'event' ? (hit.item.isTask ? '任务' : '记录') : '灵感'})\n`;
+            const content = hit.type === 'event' ? hit.item.title : hit.item.text;
+            const desc = hit.type === 'event' ? hit.item.desc : hit.item.desc;
+            
+            md += `- ${content}\n`;
+            if (desc) {
+                md += `  > ${desc.replace(/\n/g, '\n  > ')}\n`;
+            }
+            md += '\n';
+        });
+
+        const blob = new Blob([md], { type: 'text/markdown' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Search-Export-${new Date().toISOString().slice(0,10)}.md`;
+        a.click();
+    }
+    
+    function exportReport(type) {
+        // Simple export
+        let md = `# 工作报告 (${type === 'week' ? '本周' : '本月'})\n\n`;
+        const today = new Date();
+        today.setHours(0,0,0,0);
+        
+        const currentMonth = today.getMonth();
+        const currentYear = today.getFullYear();
+        
+        // Filter dates
+        const sortedDates = Object.keys(events).sort();
+        
+        sortedDates.forEach(dateKey => {
+            // Parse dateKey robustly as local date
+            const [y, m, dNum] = dateKey.split('-').map(Number);
+            const d = new Date(y, m-1, dNum);
+            
+            let include = false;
+            
+            if (type === 'month') {
+                if (d.getMonth() === currentMonth && d.getFullYear() === currentYear) include = true;
+            } else {
+                // Current Week (Sunday to Saturday) - Adjusted based on user feedback (Feb 1st is Sunday)
+                // User expects Feb 1st (Sun) to Feb 7th (Sat) to be the current week range.
+                const startOfWeek = new Date(today);
+                startOfWeek.setDate(today.getDate() - today.getDay()); // Sunday is 0, so subtract 0. Monday is 1, subtract 1.
+                const startKey = getDateKey(startOfWeek);
+                
+                const endOfWeek = new Date(startOfWeek);
+                endOfWeek.setDate(startOfWeek.getDate() + 6);
+                const endKey = getDateKey(endOfWeek);
+                
+                if (dateKey >= startKey && dateKey <= endKey) include = true;
+            }
+            
+            if (include) {
+                const list = events[dateKey];
+                if (list && list.length) {
+                    md += `## ${dateKey}\n`;
+                    
+                    // Sort same as calendar: Meeting > Task > Note -> Time -> Created -> Title -> Filename
+                    const sortedList = [...list].sort((a, b) => {
+                         const getWeight = (item) => {
+                             const t = item.type || (item.isTask ? 'task' : 'note');
+                             if (t === 'meeting') return 1;
+                             if (t === 'task') return 2;
+                             return 3;
+                         };
+                         const wa = getWeight(a);
+                         const wb = getWeight(b);
+                         if (wa !== wb) return wa - wb;
+                         
+                         if (a.startTime && b.startTime) {
+                             const timeCompare = a.startTime.localeCompare(b.startTime);
+                             if (timeCompare !== 0) return timeCompare;
+                         }
+
+                         if (a.created && b.created) {
+                             const cA = new Date(a.created).getTime();
+                             const cB = new Date(b.created).getTime();
+                             if (cA !== cB) return cA - cB;
+                         }
+                         
+                         const titleCompare = (a.title || '').localeCompare(b.title || '');
+                         if (titleCompare !== 0) return titleCompare;
+
+                         return (a.fileName || '').localeCompare(b.fileName || '');
+                    });
+
+                    sortedList.forEach(item => {
+                        const t = item.type || (item.isTask ? 'task' : 'note');
+                        let prefix = '-';
+                        if (t === 'meeting') {
+                            const timeStr = item.startTime ? `[${item.startTime}${item.endTime ? '-' + item.endTime : ''}] ` : '[会议] ';
+                            prefix = timeStr;
+                        } else if (t === 'task') {
+                            prefix = item.completed ? '[x]' : '[ ]';
+                        }
+                        
+                        md += `${prefix} ${item.title}`;
+                        if (item.desc) md += `\n  > ${item.desc.replace(/\n/g, '\n  > ')}`;
+                        md += '\n';
+                    });
+                    md += '\n';
+                }
+            }
+        });
+        
+        // Download
+        const blob = new Blob([md], { type: 'text/markdown' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Report-${type}-${new Date().toISOString().slice(0,10)}.md`;
+        a.click();
+    }
+    
+    // --- Helper: Filename & Sanitization ---
+    
+    function sanitizeFilename(name) {
+        // Remove chars invalid in Windows/Unix
+        return name.replace(/[\\/:*?"<>|]/g, '').trim();
+    }
+    
+    async function getUniqueFilename(dirHandle, dateKey, title) {
+        const safeTitle = sanitizeFilename(title) || 'Untitled';
+        let filename;
+        if (dateKey) {
+            filename = `${dateKey}-${safeTitle}.md`;
+        } else {
+            filename = `${safeTitle}.md`;
+        }
+        
+        // Simple incremental check
+        let counter = 1;
+        while (await fileExistsInDir(dirHandle, filename)) {
+            if (dateKey) {
+                filename = `${dateKey}-${safeTitle}-${counter}.md`;
+            } else {
+                filename = `${safeTitle}-${counter}.md`;
+            }
+            counter++;
+        }
+        return filename;
+    }
+
+    // --- Helper: Cache & Parsing (Removed) ---
+
+
+    // syncFromDisk removed
+
+
+    async function verifyPermission(handle, withWrite) {
+        const opts = {};
+        if (withWrite) {
+            opts.mode = 'readwrite';
+        }
+        try {
+            if ((await handle.queryPermission(opts)) === 'granted') {
+                return true;
+            }
+            if ((await handle.requestPermission(opts)) === 'granted') {
+                return true;
+            }
+        } catch (e) {
+            console.error('Permission check/request failed', e);
+        }
+        return false;
+    }
+
+    async function initStorage() {
+        try {
+            const handle = await getHandle();
+            if (handle) {
+                dirHandle = handle;
+                // Check permission status passively
+                const perm = await dirHandle.queryPermission({ mode: 'readwrite' });
+                if (perm === 'granted') {
+                     updateFolderPathUI(dirHandle.name, true);
+                     await ensureSubdirs(); // Ensure Journal/Inbox exist
+                     await loadFromDisk();
+                } else {
+                     updateFolderPathUI(dirHandle.name, false);
+                }
+            }
+        } catch (e) { console.log('Init Storage Error', e); }
+        renderIdeas();
+        
+        // Add dblclick to container for adding new idea
+        const ideaContainer = document.getElementById('ideaContainer');
+        if (ideaContainer) {
+            ideaContainer.addEventListener('dblclick', (e) => {
+                if (!e.target.closest('.idea-item')) {
+                    openIdeaModal(null);
+                }
+            });
+        }
+    }
+
+    async function selectFolder() {
+        if (!window.showDirectoryPicker) {
+            alert('您的浏览器不支持文件系统访问 API (File System Access API)。请使用最新版 Chrome 或 Edge 浏览器。');
+            return;
+        }
+
+        try {
+            // If we have a handle (e.g. from re-auth click), try to verify permission first
+            if (dirHandle) {
+                const hasPerm = await verifyPermission(dirHandle, true);
+                if (hasPerm) {
+                    // Permission granted/restored
+                    updateFolderPathUI(dirHandle.name, true);
+                    await storeHandle(dirHandle);
+                    await ensureSubdirs();
+                    await loadFromDisk();
+                    return;
+                }
+                // If permission denied/failed, fall through to picker
+            }
+
+            // Capture current data before loading from disk (to prevent data loss)
+            const memoryEvents = JSON.parse(JSON.stringify(events));
+            const memoryIdeas = JSON.parse(JSON.stringify(ideas));
+
+            // Open picker
+            dirHandle = await window.showDirectoryPicker({
+                mode: 'readwrite'
+            });
+            
+            await storeHandle(dirHandle);
+            await ensureSubdirs();
+            updateFolderPathUI(dirHandle.name, true);
+            
+            // Load data from disk (this overwrites 'events' and 'ideas')
+            await loadFromDisk();
+            
+            // Merge logic: If item was in memory but not in loaded data, add it and save it.
+            let mergedCount = 0;
+            
+            // Merge Events
+            for (const [date, list] of Object.entries(memoryEvents)) {
+                for (const item of list) {
+                    // Check if this item exists in the newly loaded 'events'
+                    let exists = false;
+                    // Check all dates
+                    for (const loadedList of Object.values(events)) {
+                        if (loadedList.find(i => i.id === item.id)) {
+                            exists = true;
+                            break;
+                        }
+                    }
+                    
+                    if (!exists) {
+                        // Add to events
+                        if (!events[date]) events[date] = [];
+                        events[date].push(item);
+                        // Save to disk
+                        await saveEventToDisk(date, item);
+                        mergedCount++;
+                    }
+                }
+            }
+            
+            // Merge Ideas
+            for (const idea of memoryIdeas) {
+                const exists = ideas.find(i => i.id === idea.id);
+                if (!exists) {
+                    ideas.unshift(idea); // Add to memory
+                    await saveIdeaToDisk(idea); // Save to disk
+                    mergedCount++;
+                }
+            }
+            
+            if (mergedCount > 0) {
+                console.log(`Merged ${mergedCount} items from local storage to disk.`);
+                localStorage.setItem('calendarEvents', JSON.stringify(events));
+                localStorage.setItem('calendarIdeas', JSON.stringify(ideas));
+                renderCalendar();
+                renderIdeas();
+                updateDashboard();
+            }
+
+        } catch (err) {
+            console.error('Select folder error:', err);
+            if (err.name !== 'AbortError') {
+                alert('选择文件夹失败: ' + err.message);
+            }
+        }
+    }
+
+    function updateFolderPathUI(name, valid) {
+        const el = document.getElementById('folderPath');
+        if (!el) return;
+        
+        if (valid) {
+            el.textContent = name;
+            el.style.color = '';
+            el.style.cursor = '';
+            el.onclick = null;
+        } else {
+            el.textContent = name + ' (点击此处重新授权)';
+            el.style.color = '#e88';
+            el.style.cursor = 'pointer';
+            el.onclick = selectFolder;
+        }
+    }
+
+    async function saveEventToDisk(dateKey, item) {
+        if (!dirHandle) {
+             console.warn('No directory handle selected.');
+             return;
+        }
+        
+        const hasPerm = await verifyPermission(dirHandle, true);
+        if (!hasPerm) {
+            alert('无法保存文件：请在左侧点击文件夹名称重新授权。');
+            return;
+        }
+
+        // Prepare Frontmatter
+        const metadata = {
+            type: item.type || (item.isTask ? 'task' : 'note'),
+            status: item.completed ? 'done' : 'pending',
+            id: item.id,
+            created: item.created || new Date().toISOString()
+        };
+        
+        if (item.type === 'meeting' || item.type === 'task') {
+            if (item.startTime) metadata.startTime = item.startTime;
+            if (item.endTime) metadata.endTime = item.endTime;
+            if (item.endDate) metadata.endDate = item.endDate;
+        }
+        
+        if (item.customAttrs && item.customAttrs.length) {
+            item.customAttrs.forEach(a => metadata[a.name] = a.value);
+        }
+        
+        const body = `# ${item.title}\n\n${item.desc || ''}`;
+        const content = stringifyFrontmatter(metadata, body);
+
+        try {
+            const journalHandle = await dirHandle.getDirectoryHandle('Journal', { create: true });
+            
+            const safeTitle = sanitizeFilename(item.title) || 'Untitled';
+            const baseName = `${dateKey}-${safeTitle}.md`;
+            
+            let finalFileName = baseName;
+
+            // Check if we need to rename or generate new name
+            if (item.fileName === baseName) {
+                // Name matches, overwrite
+                finalFileName = baseName;
+            } else {
+                // Determine unique name if baseName exists
+                if (await fileExistsInDir(journalHandle, baseName)) {
+                     finalFileName = await getUniqueFilename(journalHandle, dateKey, item.title);
+                } else {
+                     finalFileName = baseName;
+                }
+            }
+            
+            await writeFileInDir(journalHandle, finalFileName, content);
+            
+            // If we renamed the file, delete the old one
+            if (item.fileName && item.fileName !== finalFileName) {
+                try { 
+                    await journalHandle.removeEntry(item.fileName); 
+                } catch(e) {
+                    console.warn('Could not delete old file:', item.fileName);
+                }
+            }
+            
+            item.fileName = finalFileName;
+            localStorage.setItem('calendarEvents', JSON.stringify(events));
+            
+        } catch (err) {
+            console.error('Save failed:', err);
+            alert('保存文件失败: ' + err.message);
+        }
+    }
+    
+    async function fileExistsInDir(handle, name) {
+        try {
+            await handle.getFileHandle(name);
+            return true;
+        } catch {
+            return false;
+        }
+    }
+    
+    async function writeFileInDir(dir, name, content) {
+        const fileHandle = await dir.getFileHandle(name, { create: true });
+        const writable = await fileHandle.createWritable();
+        await writable.write(content);
+        await writable.close();
+    }
+
+    // --- Ideas Logic ---
+
+    function handleIdeaInput(e) {
+        if (e.key === 'Enter') addIdea();
+    }
+
+    function addIdea() {
+        const input = document.getElementById('ideaInput');
+        const text = input.value.trim();
+        if (!text) return;
+
+        const date = new Date();
+        const dateKey = getDateKey(date);
+        
+        const idea = {
+            id: uuid(),
+            text: text,
+            dateKey: dateKey,
+            created: Date.now()
+        };
+
+        ideas.unshift(idea);
+        localStorage.setItem('calendarIdeas', JSON.stringify(ideas));
+        renderIdeas();
+        input.value = '';
+        
+        saveIdeaToDisk(idea);
+    }
+
+    async function saveIdeaToDisk(idea) {
+        if (!dirHandle) return;
+
+        const hasPerm = await verifyPermission(dirHandle, true);
+        if (!hasPerm) {
+             console.warn('Cannot save idea: permission denied');
+             alert('无法保存灵感：没有写入权限。请在左侧点击文件夹名称重新授权。');
+             return;
+        }
+
+        const metadata = {
+            type: 'idea',
+            id: idea.id,
+            created: new Date(idea.created).toISOString(),
+            title: idea.text
+        };
+        
+        const content = stringifyFrontmatter(metadata, idea.desc || '');
+        
+        try {
+            const inboxHandle = await dirHandle.getDirectoryHandle('Inbox', { create: true });
+            
+            const safeTitle = sanitizeFilename(idea.text) || 'Untitled';
+            const baseName = `${safeTitle}.md`;
+            
+            let finalFileName = baseName;
+            
+            if (idea.fileName === baseName) {
+                finalFileName = baseName;
+            } else {
+                if (await fileExistsInDir(inboxHandle, baseName)) {
+                     finalFileName = await getUniqueFilename(inboxHandle, null, idea.text);
+                } else {
+                     finalFileName = baseName;
+                }
+            }
+            
+            await writeFileInDir(inboxHandle, finalFileName, content);
+            
+            if (idea.fileName && idea.fileName !== finalFileName) {
+                try { 
+                    await inboxHandle.removeEntry(idea.fileName); 
+                } catch(e) {
+                     console.warn('Could not delete old idea file:', idea.fileName);
+                }
+            }
+            
+            idea.fileName = finalFileName;
+            localStorage.setItem('calendarIdeas', JSON.stringify(ideas));
+            
+        } catch (err) {
+            console.error('Save idea failed', err);
+            alert('保存灵感失败: ' + err.message);
+        }
+    }
+
+    async function syncAllToDisk() {
+        if (!dirHandle) return;
+        console.log('Starting full sync to disk...');
+        
+        // Sync Events
+        for (const [date, list] of Object.entries(events)) {
+            for (const item of list) {
+                await saveEventToDisk(date, item);
+            }
+        }
+        
+        // Sync Ideas
+        for (const idea of ideas) {
+            await saveIdeaToDisk(idea);
+        }
+        console.log('Full sync complete.');
+    }
+
+    function renderIdeas() {
+        const container = document.getElementById('ideaList');
+        container.innerHTML = ideas.map(idea => `
+            <div class="idea-item" draggable="true" ondragstart="drag(event)" 
+                data-id="${idea.id}" 
+                data-text="${escapeAttr(idea.text)}"
+                data-title="${escapeAttr(idea.text)}"
+                data-desc="创建时间: ${new Date(idea.created).toLocaleString()}"
+                data-idea="true">
+                <div>${escapeHtml(idea.text)}</div>
+                <span class="idea-date">${idea.dateKey}</span>
+            </div>
+        `).join('');
+
+        container.querySelectorAll('.idea-item').forEach(item => {
+            item.addEventListener('dblclick', (e) => {
+                e.stopPropagation();
+                openIdeaModal(item.dataset.id);
+            });
+            item.addEventListener('mouseenter', showTooltip);
+            item.addEventListener('mouseleave', hideTooltip);
+            item.addEventListener('mousemove', moveTooltip);
+        });
+        updateDashboard();
+    }
+
+    function openIdeaModal(id) {
+        editingType = 'idea';
+        editingItemId = id;
+        
+        const isEdit = !!id;
+        const idea = isEdit ? ideas.find(i => i.id === id) : null;
+
+        document.getElementById('modalTitle').textContent = isEdit ? '编辑灵感' : '添加灵感';
+        document.getElementById('eventInput').value = idea ? (idea.text || '') : '';
+        document.getElementById('eventDesc').value = idea ? (idea.desc || '') : '';
+        document.getElementById('modalDelete').style.display = isEdit ? 'block' : 'none';
+        
+        // Hide irrelevant controls
+        document.getElementById('asTaskLabel').style.display = 'none';
+        document.getElementById('asRecordLabel').style.display = 'none';
+        
+        // Reset styles/attrs
+        document.getElementById('styleBold').checked = false; 
+        document.getElementById('styleColor').value = '#5ba3dc';
+        document.getElementById('customAttrsContainer').innerHTML = '';
+
+        document.getElementById('modalOverlay').classList.add('show');
+        document.getElementById('eventInput').focus();
+    }
+
+    // --- Drag and Drop ---
+
+    function dragEvent(e) {
+        const item = e.target.closest('.cell-event-item');
+        if (!item) return;
+        
+        const id = item.getAttribute('data-id');
+        const date = item.getAttribute('data-date');
+        const title = item.getAttribute('data-title');
+        
+        // Use a JSON object in text/plain for maximum compatibility
+        const dragData = JSON.stringify({
+            type: 'event',
+            id: id,
+            date: date,
+            title: title
+        });
+        
+        e.dataTransfer.setData("text/plain", dragData);
+        e.dataTransfer.setData("application/mycalendar-event-id", id);
+        e.dataTransfer.setData("application/mycalendar-event-date", date);
+        e.dataTransfer.effectAllowed = "move";
+    }
+
+    function drag(e) {
+        const dragData = JSON.stringify({
+            type: 'idea',
+            id: e.target.dataset.id,
+            text: e.target.dataset.text
+        });
+        e.dataTransfer.setData("text/plain", dragData);
+        e.dataTransfer.setData("application/mycalendar-idea-id", e.target.dataset.id);
+        e.dataTransfer.effectAllowed = "copyMove";
+    }
+
+    function allowDrop(e) {
+        e.preventDefault();
+        const cell = e.target.closest('.calendar-cell');
+        if (cell) {
+            cell.classList.add('drag-over');
+            e.dataTransfer.dropEffect = "move";
+        }
+    }
+    
+    function dragLeave(e) {
+        const cell = e.target.closest('.calendar-cell');
+        if (cell) cell.classList.remove('drag-over');
+    }
+
+    async function drop(e) {
+        e.preventDefault();
+        const cell = e.target.closest('.calendar-cell');
+        if (!cell) return;
+        
+        cell.classList.remove('drag-over');
+        const targetDateKey = cell.dataset.date;
+        
+        // Attempt to parse data
+        let type, id, sourceDate, text;
+        
+        try {
+            const rawData = e.dataTransfer.getData("text/plain");
+            if (rawData && rawData.startsWith('{')) {
+                const data = JSON.parse(rawData);
+                type = data.type;
+                id = data.id;
+                sourceDate = data.date; // For events
+                text = data.text;       // For ideas
+            }
+        } catch (err) { console.log('JSON parse error', err); }
+
+        // Fallback to specific types if JSON failed or wasn't used
+        if (!type) {
+            if (e.dataTransfer.getData("application/mycalendar-event-id")) {
+                type = 'event';
+                id = e.dataTransfer.getData("application/mycalendar-event-id");
+                sourceDate = e.dataTransfer.getData("application/mycalendar-event-date");
+            } else if (e.dataTransfer.getData("application/mycalendar-idea-id")) {
+                type = 'idea';
+                id = e.dataTransfer.getData("application/mycalendar-idea-id");
+                text = e.dataTransfer.getData("text/plain"); // This might be just text
+            }
+        }
+
+        if (type === 'event' && id && sourceDate && targetDateKey) {
+            if (sourceDate === targetDateKey) return;
+
+            // Optimistic UI Update
+            const sourceList = events[sourceDate] || [];
+            const itemIndex = sourceList.findIndex(i => i.id === id);
+            
+            if (itemIndex > -1) {
+                const item = sourceList[itemIndex];
+                const oldFileName = item.fileName;
+                
+                // 1. Update Data Model
+                sourceList.splice(itemIndex, 1);
+                if (sourceList.length === 0) delete events[sourceDate];
+                
+                const targetList = events[targetDateKey] || [];
+                // Reset filename so it generates a new one with 'm' suffix
+                // Actually, we handle the specific 'm' naming in moveEventFile, 
+                // but we should clear it here to avoid confusion if save fails.
+                // However, moveEventFile needs the OLD filename to delete it.
+                // We will let moveEventFile handle the new name generation.
+                
+                targetList.push(item);
+                events[targetDateKey] = targetList;
+                
+                localStorage.setItem('calendarEvents', JSON.stringify(events));
+                
+                // 2. Render immediately
+                renderCalendar();
+                
+                // 3. Handle File System (Async)
+                if (dirHandle) {
+                    // Check permission without blocking if possible, or request it
+                    // Note: requestPermission requires user gesture. Drop is a user gesture? 
+                    // Usually yes, but sometimes finicky.
+                    
+                    try {
+                        const hasPerm = await verifyPermission(dirHandle, true);
+                        if (hasPerm) {
+                            await moveEventFile(targetDateKey, item, oldFileName);
+                        } else {
+                            // If permission fails, we have a sync issue. 
+                            // The item is moved in UI but not on disk.
+                            // We should probably alert the user.
+                            alert('UI已更新，但由于权限原因无法移动文件。请在左侧点击文件夹名称重新授权。');
+                        }
+                    } catch (err) {
+                        console.error(err);
+                        alert('文件移动失败: ' + err.message);
+                    }
+                }
+            }
+            return;
+        }
+
+        if (type === 'idea' && text && targetDateKey) {
+            // ... existing idea logic ...
+            const list = events[targetDateKey] || [];
+            
+            // Try to find original idea to get description
+            let ideaDesc = '';
+            let ideaCreated = Date.now();
+            const originalIdea = ideas.find(i => i.id === id);
+            if (originalIdea) {
+                ideaDesc = originalIdea.desc || '';
+                ideaCreated = originalIdea.created || Date.now();
+            }
+
+            const newItem = {
+                id: uuid(),
+                title: text,
+                desc: ideaDesc,
+                isTask: true,
+                completed: false,
+                bold: false,
+                color: '',
+                customAttrs: [],
+                created: new Date(ideaCreated).toISOString()
+            };
+            list.push(newItem);
+            events[targetDateKey] = list;
+            localStorage.setItem('calendarEvents', JSON.stringify(events));
+            
+            // Remove idea from list AND disk
+            if (id) {
+                const ideaToDelete = ideas.find(i => i.id === id);
+                ideas = ideas.filter(i => i.id !== id);
+                localStorage.setItem('calendarIdeas', JSON.stringify(ideas));
+                renderIdeas();
+                
+                if (dirHandle && ideaToDelete && ideaToDelete.fileName) {
+                    // Ensure permission for deletion
+                    verifyPermission(dirHandle, true).then(hasPerm => {
+                        if (hasPerm) {
+                            dirHandle.getDirectoryHandle('Inbox').then(handle => {
+                                handle.removeEntry(ideaToDelete.fileName).catch(e => console.error('Failed to delete idea file', e));
+                            }).catch(e => {
+                                // Fallback to root
+                                dirHandle.removeEntry(ideaToDelete.fileName).catch(e2 => console.error('Failed to delete idea file (root)', e2));
+                            });
+                        }
+                    });
+                }
+            }
+            
+            renderCalendar();
+            
+            // Async Save
+            if (dirHandle) {
+                saveEventToDisk(targetDateKey, newItem);
+            }
+        }
+    }
+
+    async function moveEventFile(targetDateKey, item, oldFileName) {
+        if (!dirHandle) return;
+
+        // Ensure we have permission
+        const hasPerm = await verifyPermission(dirHandle, true);
+        if (!hasPerm) {
+             throw new Error('没有写入权限。请点击文件夹名称授权。');
+        }
+
+        // Generate content (same as saveEventToDisk)
+        const metadata = {
+            type: item.type || (item.isTask ? 'task' : 'note'),
+            status: item.completed ? 'done' : 'pending',
+            id: item.id,
+            created: item.created || new Date().toISOString()
+        };
+        
+        if (item.type === 'meeting' || item.type === 'task') {
+            if (item.startTime) metadata.startTime = item.startTime;
+            if (item.endTime) metadata.endTime = item.endTime;
+            if (item.endDate) metadata.endDate = item.endDate;
+        }
+
+        if (item.customAttrs && item.customAttrs.length) {
+            item.customAttrs.forEach(a => metadata[a.name] = a.value);
+        }
+        
+        const body = `# ${item.title}\n\n${item.desc || ''}`;
+        const content = stringifyFrontmatter(metadata, body);
+
+        const journalHandle = await dirHandle.getDirectoryHandle('Journal', { create: true });
+        
+        // Generate Filename: Journal/YYYY-MM-DD-Title.md
+        let newFileName = await getUniqueFilename(journalHandle, targetDateKey, item.title);
+
+        item.fileName = newFileName;
+        localStorage.setItem('calendarEvents', JSON.stringify(events));
+
+        try {
+            await writeFileInDir(journalHandle, newFileName, content);
+            
+            if (oldFileName) {
+                // Try delete from Journal first
+                try { 
+                    await journalHandle.removeEntry(oldFileName); 
+                } catch(e) { 
+                    // If not in Journal, maybe in root?
+                    try { await dirHandle.removeEntry(oldFileName); } catch(e2) { console.log('Could not delete old file', e2); }
+                }
+            }
+        } catch (err) {
+            console.error('Move file failed', err);
+            throw err;
+        }
+    }
+
+    function renderKanban() {
+        const container = document.getElementById('kanbanList');
+        const filter = document.getElementById('kanbanFilter').value;
+        
+        const today = new Date();
+        const todayKey = getDateKey(today);
+        
+        // Calculate 3 days later key for range check
+        const d3 = new Date(today);
+        d3.setDate(today.getDate() + 3);
+        const threeDaysKey = getDateKey(d3);
+        
+        let targetTasks = [];
+        
+        // Iterate all events to find tasks
+        Object.keys(events).forEach(dateKey => {
+            events[dateKey].forEach(item => {
+                if (!item.isTask || item.completed) return;
+                
+                // Determine due date (use endDate if available, else dateKey)
+                let rawDueKey = item.endDate || dateKey;
+                let dueKey = rawDueKey;
+                
+                // Normalize to ensure YYYY-MM-DD for string comparison
+                if (rawDueKey.indexOf('-') > -1 && rawDueKey.length < 10) {
+                     const parts = rawDueKey.split('-');
+                     if (parts.length === 3) {
+                         dueKey = `${parts[0]}-${parts[1].padStart(2,'0')}-${parts[2].padStart(2,'0')}`;
+                     }
+                }
+                
+                const taskWithKey = { ...item, startDateKey: dateKey, dueKey };
+
+                if (filter === 'today') {
+                    // Include Today AND Overdue
+                    if (dueKey <= todayKey) {
+                        targetTasks.push(taskWithKey);
+                    }
+                } else if (filter === '3days') {
+                    // Include Overdue, Today, and Next 3 Days
+                    if (dueKey <= threeDaysKey) {
+                        targetTasks.push(taskWithKey);
+                    }
+                }
+            });
+        });
+        
+        // Sort: Due Date > Start Time > Title
+        targetTasks.sort((a, b) => {
+            const dueCompare = a.dueKey.localeCompare(b.dueKey);
+            if (dueCompare !== 0) return dueCompare;
+            
+            if (a.startTime && b.startTime) {
+                const timeCompare = a.startTime.localeCompare(b.startTime);
+                if (timeCompare !== 0) return timeCompare;
+            }
+            
+            return (a.title || '').localeCompare(b.title || '');
+        });
+        
+        if (targetTasks.length === 0) {
+            container.innerHTML = '<div style="color:var(--text-secondary); text-align:center; padding:20px; font-size:12px;">无相关任务</div>';
+            return;
+        }
+        
+        container.innerHTML = targetTasks.map(task => {
+            let dateLabel = task.dueKey;
+            if (task.dueKey === todayKey) dateLabel = '<span style="color:var(--accent); font-weight:bold;">今天</span>';
+            else if (task.dueKey < todayKey) dateLabel = `<span style="color:#e57373;">已超期 ${task.dueKey}</span>`;
+            
+            return `
+            <div class="kanban-item" onclick="openModal('${task.startDateKey}', '${task.id}')">
+                <div class="kanban-item-header">
+                    <span class="kanban-item-title">${escapeHtml(task.title)}</span>
+                    ${task.dueKey !== task.startDateKey ? '<span class="kanban-item-badge">跨天</span>' : ''}
+                </div>
+                <div class="kanban-item-date">
+                    截止: ${dateLabel} ${task.endTime ? task.endTime : ''}
+                </div>
+            </div>
+        `}).join('');
+    }
+
+    // Init
+    initStorage();
+
+
+    renderCalendar();
+
+    function openModal(dateKey, itemId) {
+      selectedDateKey = dateKey;
+      editingItemId = itemId;
+      const [y, m, d] = dateKey.split('-');
+      const isEdit = !!itemId;
+      const item = isEdit ? events[dateKey]?.find(i => i.id === itemId) : null;
+
+      document.getElementById('modalTitle').textContent = isEdit 
+        ? `编辑事项 - ${y}年${parseInt(m)}月${parseInt(d)}日`
+        : `添加事项 - ${y}年${parseInt(m)}月${parseInt(d)}日`;
+      document.getElementById('eventInput').value = item?.title || '';
+      document.getElementById('eventDesc').value = item?.desc || '';
+      document.getElementById('modalDelete').style.display = isEdit ? 'block' : 'none';
+
+      // 样式
+      document.getElementById('styleBold').checked = item?.bold || false;
+      document.getElementById('styleColor').value = item?.color || '#5ba3dc';
+
+      // Type & Time
+      const type = item?.type || (item ? (item.isTask ? 'task' : 'note') : 'task');
+      const radios = document.getElementsByName('itemType');
+      radios.forEach(r => {
+          r.checked = (r.value === type);
+      });
+      
+      document.getElementById('modalStartTime').value = item?.startTime || '';
+      document.getElementById('modalEndTime').value = item?.endTime || '';
+      document.getElementById('modalEndDate').value = item?.endDate || '';
+      
+      updateModalTypeUI();
+
+      // 自定义属性
+      const attrsContainer = document.getElementById('customAttrsContainer');
+      attrsContainer.innerHTML = '';
+      if (item?.customAttrs && item.customAttrs.length > 0) {
+        item.customAttrs.forEach((attr, idx) => {
+          addCustomAttrRow(attr.name, attr.value);
+        });
+      }
+
+      document.getElementById('modalOverlay').classList.add('show');
+      document.getElementById('eventInput').focus();
+    }
+
+    function updateModalTypeUI() {
+        const type = document.querySelector('input[name="itemType"]:checked').value;
+        const timeInputs = document.getElementById('timeInputs');
+        if (type === 'meeting' || type === 'task') {
+            timeInputs.classList.add('show');
+        } else {
+            timeInputs.classList.remove('show');
+        }
+    }
+    
+    // Add listener for type change
+    document.querySelectorAll('input[name="itemType"]').forEach(radio => {
+        radio.addEventListener('change', updateModalTypeUI);
+    });
+
+    function addCustomAttr() {
+      addCustomAttrRow('', '');
+    }
+
+    function addCustomAttrRow(name, value) {
+      const container = document.getElementById('customAttrsContainer');
+      const row = document.createElement('div');
+      row.className = 'custom-attr-row';
+      row.innerHTML = `
+        <input type="text" class="attr-name-input" placeholder="属性名称" value="${escapeAttr(name)}" />
+        <input type="text" class="attr-value-input" placeholder="属性值" value="${escapeAttr(value)}" />
+        <button type="button" class="attr-remove" onclick="this.parentElement.remove()">删除</button>
+      `;
+      container.appendChild(row);
+    }
+
+    function resetColor() {
+      document.getElementById('styleColor').value = '#5ba3dc';
+    }
+
+    function getCustomAttrs() {
+      const rows = document.querySelectorAll('#customAttrsContainer .custom-attr-row');
+      const attrs = [];
+      rows.forEach(row => {
+        const name = row.querySelector('.attr-name-input').value.trim();
+        const value = row.querySelector('.attr-value-input').value.trim();
+        if (name) {
+          attrs.push({ name, value });
+        }
+      });
+      return attrs;
+    }
+
+    function closeModal() {
+      document.getElementById('modalOverlay').classList.remove('show');
+      selectedDateKey = null;
+      editingItemId = null;
+      editingType = 'event';
+    }
+
+    async function deleteEvent() {
+      if (editingType === 'idea') {
+          deleteIdea();
+          return;
+      }
+      if (!selectedDateKey || !editingItemId) return;
+      const list = events[selectedDateKey];
+      if (list) {
+        const item = list.find(i => i.id === editingItemId);
+        if (item && item.fileName && dirHandle) {
+            try {
+                const journalHandle = await dirHandle.getDirectoryHandle('Journal');
+                await journalHandle.removeEntry(item.fileName);
+            } catch(e) {
+                // Try root
+                try { await dirHandle.removeEntry(item.fileName); } catch(e2) {}
+            }
+        }
+        
+        events[selectedDateKey] = list.filter(i => i.id !== editingItemId);
+        if (events[selectedDateKey].length === 0) delete events[selectedDateKey];
+        localStorage.setItem('calendarEvents', JSON.stringify(events));
+        closeModal();
+        renderCalendar();
+      }
+    }
+
+    async function deleteIdea() {
+        if (!editingItemId) return;
+        const idea = ideas.find(i => i.id === editingItemId);
+        if (idea) {
+            if (idea.fileName && dirHandle) {
+                 try { 
+                     const inboxHandle = await dirHandle.getDirectoryHandle('Inbox');
+                     await inboxHandle.removeEntry(idea.fileName); 
+                 } catch(e) { 
+                     try { await dirHandle.removeEntry(idea.fileName); } catch(e2) {}
+                 }
+            }
+            ideas = ideas.filter(i => i.id !== editingItemId);
+            localStorage.setItem('calendarIdeas', JSON.stringify(ideas));
+            renderIdeas();
+            closeModal();
+        }
+    }
+
+    function saveEvent() {
+      if (editingType === 'idea') {
+          saveIdea();
+          return;
+      }
+      if (!selectedDateKey) return;
+      const title = document.getElementById('eventInput').value.trim();
+      const desc = document.getElementById('eventDesc').value.trim();
+      
+      const type = document.querySelector('input[name="itemType"]:checked').value;
+      const startTime = document.getElementById('modalStartTime').value;
+      const endTime = document.getElementById('modalEndTime').value;
+      const endDate = document.getElementById('modalEndDate').value;
+
+      const bold = document.getElementById('styleBold').checked;
+      const color = document.getElementById('styleColor').value;
+      const customAttrs = getCustomAttrs();
+
+      const list = events[selectedDateKey] || [];
+      let savedItem = null;
+
+      if (editingItemId) {
+        const item = list.find(i => i.id === editingItemId);
+        if (item) {
+          item.title = title;
+          item.desc = desc;
+          item.bold = bold;
+          item.color = color === '#5ba3dc' ? '' : color;
+          item.customAttrs = customAttrs;
+          
+          item.type = type;
+          item.isTask = (type === 'task');
+          if (type === 'meeting' || type === 'task') {
+              item.startTime = startTime;
+              item.endTime = endTime;
+              item.endDate = endDate;
+          } else {
+              delete item.startTime;
+              delete item.endTime;
+              delete item.endDate;
+          }
+          
+          if (type !== 'task') item.completed = false;
+          
+          savedItem = item;
+        }
+      } else {
+        savedItem = {
+          id: uuid(),
+          title, desc,
+          type,
+          isTask: (type === 'task'),
+          startTime: (type === 'meeting' || type === 'task' ? startTime : ''),
+          endTime: (type === 'meeting' || type === 'task' ? endTime : ''),
+          endDate: (type === 'meeting' || type === 'task' ? endDate : ''),
+          completed: false,
+          bold,
+          color: color === '#5ba3dc' ? '' : color,
+          customAttrs,
+          created: new Date().toISOString()
+        };
+        list.push(savedItem);
+        events[selectedDateKey] = list;
+      }
+
+      localStorage.setItem('calendarEvents', JSON.stringify(events));
+      
+      // Auto-save to disk
+      if (savedItem) {
+        saveEventToDisk(selectedDateKey, savedItem);
+      }
+
+      closeModal();
+      renderCalendar();
+    }
+
+    function saveIdea() {
+        const title = document.getElementById('eventInput').value.trim();
+        const desc = document.getElementById('eventDesc').value.trim();
+        
+        if (!title) return alert('内容不能为空');
+        
+        if (editingItemId) {
+            // Edit existing
+            const ideaIndex = ideas.findIndex(i => i.id === editingItemId);
+            if (ideaIndex > -1) {
+                const idea = ideas[ideaIndex];
+                idea.text = title;
+                idea.desc = desc;
+                
+                localStorage.setItem('calendarIdeas', JSON.stringify(ideas));
+                renderIdeas();
+                saveIdeaToDisk(idea);
+            }
+        } else {
+            // Add new
+            const date = new Date();
+            const dateKey = getDateKey(date);
+            const idea = {
+                id: uuid(),
+                text: title,
+                desc: desc,
+                dateKey: dateKey,
+                created: Date.now()
+            };
+            
+            ideas.unshift(idea);
+            localStorage.setItem('calendarIdeas', JSON.stringify(ideas));
+            renderIdeas();
+            saveIdeaToDisk(idea);
+        }
+        
+        closeModal();
+    }
+
+    function prevMonth() {
+      currentDate.setMonth(currentDate.getMonth() - 1);
+      renderCalendar();
+    }
+
+    function nextMonth() {
+      currentDate.setMonth(currentDate.getMonth() + 1);
+      renderCalendar();
+    }
+
+    function today() {
+      currentDate = new Date();
+      renderCalendar();
+    }
+
+    document.getElementById('modalOverlay').addEventListener('click', (e) => {
+      if (e.target.id === 'modalOverlay') closeModal();
+    });
+
+    document.getElementById('calendarGrid').addEventListener('click', (e) => {
+      const cb = e.target.closest('.task-checkbox');
+      if (cb && cb.dataset.date && cb.dataset.id) {
+        e.stopPropagation();
+        e.preventDefault();
+        toggleTaskComplete(cb.dataset.date, cb.dataset.id);
+      }
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeModal();
+    });
+
+    // --- Help & PWA ---
+    function showHelp() {
+        document.getElementById('eventModal').style.display = 'none';
+        document.getElementById('helpModal').style.display = 'block';
+        document.getElementById('modalOverlay').classList.add('show');
+    }
+
+    function closeHelp() {
+        document.getElementById('modalOverlay').classList.remove('show');
+        setTimeout(() => {
+            document.getElementById('helpModal').style.display = 'none';
+            document.getElementById('eventModal').style.display = 'block';
+        }, 200);
+    }
+
+    // Register Service Worker
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('./sw.js')
+                .then(reg => console.log('SW registered'))
+                .catch(err => console.log('SW failed', err));
+        });
+    }
+
+    renderCalendar();
+  </script>
+</body>
+</html>

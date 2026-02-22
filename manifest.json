@@ -1,0 +1,16 @@
+{
+  "name": "Local First Calendar",
+  "short_name": "LFCalendar",
+  "start_url": "./MSCalendar.html",
+  "display": "standalone",
+  "background_color": "#202020",
+  "theme_color": "#202020",
+  "description": "A local-first, markdown-based calendar and productivity tool.",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/10691/10691802.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
